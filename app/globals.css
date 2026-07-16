@@ -1,53 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+import { LeaveManagementApp } from "@/components/leave-management-app";
 
-:root {
-  color-scheme: light;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html {
-  min-width: 320px;
-  background: #eef3f8;
-}
-
-body {
-  margin: 0;
-  color: #0f172a;
-  background:
-    radial-gradient(circle at 0% 0%, rgba(37, 99, 235, 0.12), transparent 28%),
-    radial-gradient(circle at 100% 10%, rgba(14, 165, 233, 0.09), transparent 24%),
-    #eef3f8;
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
-
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
-  outline: 3px solid rgba(37, 99, 235, 0.22);
-  outline-offset: 2px;
-}
-
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
-  border-radius: 999px;
-  background: rgba(100, 116, 139, 0.5);
-  background-clip: content-box;
+export default function HomePage() {
+  return <LeaveManagementApp />;
 }
