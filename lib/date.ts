@@ -1,4 +1,4 @@
-import type { LeaveRequest, LeaveStatus } from "@/lib/types";
+import type { LeaveRequest } from "@/lib/types";
 
 export function calculateLeaveDays(startDate: string, endDate: string): number {
   if (!startDate || !endDate) return 0;
@@ -21,7 +21,26 @@ export function calculateLeaveDays(startDate: string, endDate: string): number {
   return days;
 }
 
+export function calculateOvertimeHours(
+  startTime: string,
+  endTime: string,
+  breakMinutes: number,
+): number {
+  if (!startTime || !endTime) return 0;
+
+  const [startHour, startMinute] = startTime.split(":").map(Number);
+  const [endHour, endMinute] = endTime.split(":").map(Number);
+  if ([startHour, startMinute, endHour, endMinute].some(Number.isNaN)) return 0;
+
+  let totalMinutes = endHour * 60 + endMinute - (startHour * 60 + startMinute);
+  if (totalMinutes <= 0) totalMinutes += 24 * 60;
+  totalMinutes -= Math.max(0, breakMinutes || 0);
+
+  return totalMinutes > 0 ? Math.round((totalMinutes / 60) * 100) / 100 : 0;
+}
+
 export function formatDate(date: string, locale = "en-GB"): string {
+  if (!date) return "—";
   return new Intl.DateTimeFormat(locale, {
     day: "2-digit",
     month: "short",
@@ -56,11 +75,12 @@ export function requestStatusOnDate(
   employeeId: string,
   date: string,
   requests: LeaveRequest[],
-): LeaveStatus | "working" {
+): "approved" | "pending_supervisor" | "pending_manager" | "working" {
   const matches = requests.filter(
     (request) =>
       request.employeeId === employeeId &&
       request.status !== "rejected" &&
+      request.status !== "cancelled" &&
       date >= request.startDate &&
       date <= request.endDate,
   );

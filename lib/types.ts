@@ -1,26 +1,25 @@
 export type Language = "en" | "oshi";
 
 export type RoleView = "employee" | "calendar" | "supervisor" | "manager";
+export type EmployeeModule = "leave" | "overtime";
 
-export type LeaveStatus =
+export type RequestStatus =
   | "pending_supervisor"
   | "pending_manager"
   | "approved"
-  | "rejected";
+  | "rejected"
+  | "cancelled";
 
-export type Department =
-  | "Production"
-  | "Laboratory"
-  | "Maintenance"
-  | "Logistics"
-  | "Warehouse";
+export type LeaveStatus = RequestStatus;
+export type OvertimeStatus = RequestStatus;
 
 export interface Employee {
   id: string;
+  employeeCode: string;
   firstName: string;
   surname: string;
   nickname: string;
-  department: Department;
+  department: string;
   supervisor: string;
   manager: string;
   balance: number;
@@ -36,5 +35,18 @@ export interface LeaveRequest {
   days: number;
   comment: string;
   status: LeaveStatus;
+  createdAt: string;
+}
+
+export interface OvertimeRequest {
+  id: string;
+  employeeId: string;
+  overtimeDate: string;
+  startTime: string;
+  endTime: string;
+  breakMinutes: number;
+  totalHours: number;
+  reason: string;
+  status: OvertimeStatus;
   createdAt: string;
 }
