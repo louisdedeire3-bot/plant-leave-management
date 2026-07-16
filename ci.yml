@@ -1,0 +1,34 @@
+# Plant Leave Management
+
+Next.js application connected to Supabase for annual leave and overtime.
+
+## Current features
+
+- Live employee search from Supabase
+- Provisional leave balance at 2 days per month
+- Annual leave submission
+- Saturday counted and Sunday excluded
+- Overtime submission with automatic hour calculation
+- Overnight overtime support
+- Leave calendar by department
+- Supervisor and manager pending-request dashboards
+- English and Oshiwambo
+
+## Supabase setup
+
+Run these SQL files in this order:
+
+1. `supabase/schema.sql`
+2. `supabase/03_overtime_schema.sql` if the overtime tables do not exist yet
+3. `supabase/04_kiosk_api.sql`
+
+The kiosk API exposes only restricted PostgreSQL functions. The underlying tables remain protected by RLS.
+
+## Vercel variables
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+
+## Important
+
+Supervisor and manager dashboards are read-only until secure authentication is configured. Do not enable anonymous approval updates.
