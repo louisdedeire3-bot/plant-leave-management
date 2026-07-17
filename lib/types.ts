@@ -20,6 +20,7 @@ export interface Employee {
   surname: string;
   nickname: string;
   department: string;
+  positionTitle: string;
   supervisor: string;
   manager: string;
   balance: number;
