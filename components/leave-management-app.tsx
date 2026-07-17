@@ -17,7 +17,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   calculateLeaveDays,
   calculateOvertimeHours,
@@ -919,6 +919,21 @@ function CalendarView({ t, employees, requests, department, setDepartment, weekA
   const visibleEmployees = employees.filter(
     (employee) => department === "all" || employee.department === department,
   );
+  const groupedEmployees = visibleEmployees.reduce<Record<string, Employee[]>>((groups, employee) => {
+    const key = employee.department || "Unassigned";
+    groups[key] = [...(groups[key] ?? []), employee];
+    return groups;
+  }, {});
+  const departmentEntries = Object.entries(groupedEmployees).sort(([a], [b]) => a.localeCompare(b));
+  const approvedCount = visibleEmployees.filter((employee) =>
+    weekDays.some((date) => requestStatusOnDate(employee.id, isoDate(date), requests) === "approved"),
+  ).length;
+  const pendingCount = visibleEmployees.filter((employee) =>
+    weekDays.some((date) => {
+      const status = requestStatusOnDate(employee.id, isoDate(date), requests);
+      return status === "pending_supervisor" || status === "pending_manager";
+    }),
+  ).length;
 
   function shiftWeek(offset: number) {
     const next = new Date(weekStart);
@@ -926,53 +941,110 @@ function CalendarView({ t, employees, requests, department, setDepartment, weekA
     setWeekAnchor(isoDate(next));
   }
 
+  function statusCellClass(status: keyof typeof statusCode) {
+    return {
+      working: "border-emerald-300 bg-emerald-100 text-emerald-900",
+      approved: "border-blue-400 bg-blue-600 text-white",
+      pending_supervisor: "border-amber-400 bg-amber-300 text-amber-950",
+      pending_manager: "border-violet-400 bg-violet-600 text-white",
+    }[status];
+  }
+
   return (
-    <div className="space-y-6">
-      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-soft sm:p-8">
-        <div className="flex flex-col justify-between gap-5 xl:flex-row xl:items-center">
-          <SectionHeader eyebrow="Plant availability" title={t.leaveCalendar} icon={CalendarDays} />
-          <div className="flex flex-wrap gap-2">
-            <select value={department} onChange={(event) => setDepartment(event.target.value)} className={controlClass}>
+    <div className="space-y-4">
+      <section className="overflow-hidden border border-slate-700 bg-slate-950 text-white shadow-2xl">
+        <div className="grid gap-0 xl:grid-cols-[1fr_auto]">
+          <div className="border-b border-slate-700 p-5 xl:border-b-0 xl:border-r">
+            <div className="flex items-start gap-4">
+              <span className="grid h-12 w-12 place-items-center border border-slate-600 bg-slate-900 text-amber-400">
+                <Factory size={24} />
+              </span>
+              <div>
+                <p className="font-mono text-xs font-black uppercase tracking-[0.24em] text-amber-400">Factory manpower board</p>
+                <h1 className="mt-1 text-2xl font-black uppercase tracking-tight sm:text-3xl">Leave & attendance planning</h1>
+                <p className="mt-2 text-sm text-slate-400">Operational weekly view by department</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 p-4">
+            <select value={department} onChange={(event) => setDepartment(event.target.value)} className="h-11 border border-slate-600 bg-slate-900 px-3 text-sm font-black uppercase text-white outline-none">
               <option value="all">{t.allDepartments}</option>
               {departments.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
-            <button onClick={() => shiftWeek(-1)} className={squareButtonClass}><ChevronLeft size={18} /></button>
-            <input type="date" value={weekAnchor} onChange={(event) => setWeekAnchor(event.target.value)} className={controlClass} />
-            <button onClick={() => shiftWeek(1)} className={squareButtonClass}><ChevronRight size={18} /></button>
+            <button onClick={() => shiftWeek(-1)} className="grid h-11 w-11 place-items-center border border-slate-600 bg-slate-900 text-white hover:bg-slate-800"><ChevronLeft size={18} /></button>
+            <input type="date" value={weekAnchor} onChange={(event) => setWeekAnchor(event.target.value)} className="h-11 border border-slate-600 bg-slate-900 px-3 text-sm font-bold text-white outline-none" />
+            <button onClick={() => shiftWeek(1)} className="grid h-11 w-11 place-items-center border border-slate-600 bg-slate-900 text-white hover:bg-slate-800"><ChevronRight size={18} /></button>
           </div>
         </div>
-        <div className="mt-6 flex flex-wrap gap-2">
-          <LegendPill label={t.working} status="working" />
-          <LegendPill label={t.approvedLeave} status="approved" />
-          <LegendPill label={t.pendingSupervisor} status="pending_supervisor" />
-          <LegendPill label={t.pendingManager} status="pending_manager" />
+
+        <div className="grid grid-cols-2 border-t border-slate-700 sm:grid-cols-4">
+          <div className="border-r border-slate-700 p-4"><p className="font-mono text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Employees shown</p><p className="mt-1 text-3xl font-black">{visibleEmployees.length}</p></div>
+          <div className="border-r border-slate-700 p-4"><p className="font-mono text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Departments</p><p className="mt-1 text-3xl font-black">{departmentEntries.length}</p></div>
+          <div className="border-r border-slate-700 p-4"><p className="font-mono text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Approved leave</p><p className="mt-1 text-3xl font-black text-sky-400">{approvedCount}</p></div>
+          <div className="p-4"><p className="font-mono text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Pending</p><p className="mt-1 text-3xl font-black text-amber-400">{pendingCount}</p></div>
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-soft">
+      <section className="border border-slate-400 bg-white shadow-xl">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-slate-300 bg-slate-200 px-4 py-3 font-mono text-[11px] font-black uppercase tracking-[0.12em] text-slate-700">
+          <span className="flex items-center gap-2"><span className="h-4 w-7 border border-emerald-300 bg-emerald-100" /> W — Working</span>
+          <span className="flex items-center gap-2"><span className="h-4 w-7 border border-blue-400 bg-blue-600" /> AL — Approved leave</span>
+          <span className="flex items-center gap-2"><span className="h-4 w-7 border border-amber-400 bg-amber-300" /> PS — Pending supervisor</span>
+          <span className="flex items-center gap-2"><span className="h-4 w-7 border border-violet-400 bg-violet-600" /> PM — Pending manager</span>
+          <span className="flex items-center gap-2"><span className="h-4 w-7 border border-slate-500 bg-slate-700" /> OFF — Sunday</span>
+        </div>
+
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] border-collapse">
+          <table className="w-full min-w-[1180px] border-collapse text-sm">
             <thead>
-              <tr className="bg-slate-50">
-                <th className="sticky left-0 z-10 min-w-64 border-b border-r border-slate-200 bg-slate-50 px-5 py-4 text-left text-xs font-black uppercase tracking-[0.14em] text-slate-500">{t.employee}</th>
-                {weekDays.map((date) => <th key={isoDate(date)} className="min-w-24 border-b border-slate-200 px-4 py-4 text-center text-xs font-black uppercase tracking-[0.12em] text-slate-500">{formatShortDate(date)}</th>)}
+              <tr className="bg-slate-900 text-white">
+                <th className="sticky left-0 z-20 min-w-[300px] border-r border-slate-600 bg-slate-900 px-4 py-3 text-left font-mono text-xs font-black uppercase tracking-[0.12em]">Employee / Department</th>
+                {weekDays.map((date) => {
+                  const away = visibleEmployees.filter((employee) => requestStatusOnDate(employee.id, isoDate(date), requests) !== "working").length;
+                  const isSaturday = date.getDay() === 6;
+                  const isSunday = date.getDay() === 0;
+                  return (
+                    <th key={isoDate(date)} className={`min-w-[118px] border-r border-slate-700 px-2 py-3 text-center ${isSaturday ? "bg-amber-950" : isSunday ? "bg-slate-800" : ""}`}>
+                      <p className="font-mono text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">{new Intl.DateTimeFormat("en-GB", { weekday: "short" }).format(date)}</p>
+                      <p className="mt-1 text-xl font-black">{new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short" }).format(date)}</p>
+                      <p className="mt-1 font-mono text-[10px] font-black uppercase text-amber-400">{away} away</p>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
-              {visibleEmployees.map((employee) => (
-                <tr key={employee.id} className="group hover:bg-slate-50/60">
-                  <td className="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-5 py-4 group-hover:bg-slate-50">
-                    <div className="flex items-center gap-3">
-                      <span className="grid h-10 w-10 place-items-center rounded-xl bg-slate-900 text-xs font-black text-white">{initials(employee)}</span>
-                      <div><p className="font-black text-slate-950">{employeeName(employee)}</p><p className="text-xs text-slate-500">{employee.department}</p></div>
-                    </div>
-                  </td>
-                  {weekDays.map((date) => {
-                    if (date.getDay() === 0) return <td key={isoDate(date)} className="border-b border-slate-100 px-3 py-4 text-center"><span className="inline-grid h-10 w-14 place-items-center rounded-xl bg-slate-100 text-sm font-black text-slate-400">—</span></td>;
-                    const status = requestStatusOnDate(employee.id, isoDate(date), requests);
-                    return <td key={isoDate(date)} className="border-b border-slate-100 px-3 py-4 text-center"><span className={`inline-grid h-10 w-14 place-items-center rounded-xl text-sm font-black ring-1 ${statusStyles[status]}`}>{statusCode[status]}</span></td>;
-                  })}
-                </tr>
+              {departmentEntries.map(([departmentName, departmentEmployees]) => (
+                <Fragment key={departmentName}>
+                  <tr className="bg-slate-300">
+                    <td colSpan={8} className="border-y border-slate-500 px-4 py-2 font-mono text-xs font-black uppercase tracking-[0.16em] text-slate-900">
+                      <div className="flex items-center justify-between">
+                        <span>{departmentName}</span>
+                        <span>{departmentEmployees.length} employees</span>
+                      </div>
+                    </td>
+                  </tr>
+                  {departmentEmployees.map((employee, employeeIndex) => (
+                    <tr key={employee.id} className={employeeIndex % 2 === 0 ? "bg-white" : "bg-slate-50"}>
+                      <td className="sticky left-0 z-10 border-b border-r border-slate-300 bg-inherit px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <span className="grid h-9 w-9 shrink-0 place-items-center border border-slate-500 bg-slate-800 font-mono text-xs font-black text-white">{initials(employee)}</span>
+                          <div className="min-w-0">
+                            <p className="truncate font-black uppercase text-slate-950">{employeeName(employee)}</p>
+                            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">{employee.employeeCode}</p>
+                          </div>
+                        </div>
+                      </td>
+                      {weekDays.map((date) => {
+                        if (date.getDay() === 0) {
+                          return <td key={isoDate(date)} className="border-b border-r border-slate-300 bg-slate-200 p-2 text-center"><span className="grid h-12 w-full place-items-center border border-slate-500 bg-slate-700 font-mono text-xs font-black text-white">OFF</span></td>;
+                        }
+                        const status = requestStatusOnDate(employee.id, isoDate(date), requests);
+                        return <td key={isoDate(date)} className={`border-b border-r border-slate-300 p-2 text-center ${date.getDay() === 6 ? "bg-amber-50" : ""}`}><span className={`grid h-12 w-full place-items-center border-2 font-mono text-sm font-black tracking-[0.08em] ${statusCellClass(status)}`}>{statusCode[status]}</span></td>;
+                      })}
+                    </tr>
+                  ))}
+                </Fragment>
               ))}
             </tbody>
           </table>
