@@ -1010,6 +1010,10 @@ export function LeaveManagementApp() {
                   <label className="flex items-center gap-3 border border-slate-700 bg-slate-900 px-4 py-3"><span className="text-sm font-black">LOW SEASON MODE</span><input type="checkbox" checked={factoryMode?.low_season_mode !== false} onChange={(e) => void toggleLowSeason(e.target.checked)} className="h-5 w-5" /></label>
                 </div>
               </section>
+              <ManagerOvertimeDashboard
+                requests={overtimeRequests}
+                employees={employees}
+              />
               <EmployeeManagementPanel
                 employees={managedEmployees}
                 options={employeeAdminOptions}
@@ -1485,6 +1489,186 @@ interface ApprovalDashboardProps {
 }
 
 
+
+
+function ManagerOvertimeDashboard({
+  requests,
+  employees,
+}: {
+  requests: OvertimeRequest[];
+  employees: Employee[];
+}) {
+  const today = new Date();
+  const [monthKey, setMonthKey] = useState(
+    `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`
+  );
+
+  const monthRequests = requests.filter((request) => request.overtimeDate.startsWith(monthKey));
+  const approved = monthRequests.filter((request) => request.status === "approved");
+  const pending = monthRequests.filter(
+    (request) => request.status === "pending_supervisor" || request.status === "pending_manager"
+  );
+  const pendingManager = monthRequests.filter((request) => request.status === "pending_manager");
+
+  const approvedHours = approved.reduce((sum, request) => sum + request.totalHours, 0);
+  const pendingHours = pending.reduce((sum, request) => sum + request.totalHours, 0);
+  const uniqueEmployees = new Set(approved.map((request) => request.employeeId)).size;
+
+  const reasonHours = approved.reduce<Record<string, number>>((acc, request) => {
+    const key = request.reason || "Other / Not specified";
+    acc[key] = (acc[key] ?? 0) + request.totalHours;
+    return acc;
+  }, {});
+  const reasonRows = Object.entries(reasonHours)
+    .map(([reason, hours]) => ({ reason, hours }))
+    .sort((a, b) => b.hours - a.hours);
+
+  const employeeHours = approved.reduce<Record<string, number>>((acc, request) => {
+    acc[request.employeeId] = (acc[request.employeeId] ?? 0) + request.totalHours;
+    return acc;
+  }, {});
+  const topEmployees = Object.entries(employeeHours)
+    .map(([employeeId, hours]) => ({
+      employee: employees.find((employee) => employee.id === employeeId),
+      hours,
+    }))
+    .filter((row): row is { employee: Employee; hours: number } => Boolean(row.employee))
+    .sort((a, b) => b.hours - a.hours)
+    .slice(0, 5);
+
+  const departmentHours = approved.reduce<Record<string, number>>((acc, request) => {
+    const employee = employees.find((item) => item.id === request.employeeId);
+    const department = employee?.department || "Unassigned";
+    acc[department] = (acc[department] ?? 0) + request.totalHours;
+    return acc;
+  }, {});
+  const departmentRows = Object.entries(departmentHours)
+    .map(([department, hours]) => ({ department, hours }))
+    .sort((a, b) => b.hours - a.hours)
+    .slice(0, 5);
+
+  const monthTitle = (() => {
+    const [year, month] = monthKey.split("-").map(Number);
+    return new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric" }).format(
+      new Date(year, month - 1, 1)
+    );
+  })();
+
+  const maxReasonHours = Math.max(...reasonRows.map((row) => row.hours), 1);
+
+  return (
+    <section className="overflow-hidden border border-slate-300 bg-white shadow-xl">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-300 bg-slate-950 px-5 py-4 text-white">
+        <div>
+          <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">Overtime control</p>
+          <h2 className="mt-1 text-2xl font-black uppercase">Manager overtime dashboard</h2>
+          <p className="mt-1 text-sm text-slate-400">{monthTitle}</p>
+        </div>
+        <input
+          type="month"
+          value={monthKey}
+          onChange={(event) => setMonthKey(event.target.value)}
+          className="h-10 border border-slate-600 bg-slate-900 px-3 text-sm font-black text-white outline-none"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 border-b border-slate-300 bg-slate-50 lg:grid-cols-4">
+        <OvertimeKpi label="Approved hours" value={`${approvedHours.toFixed(1)} h`} detail={`${approved.length} approved entries`} />
+        <OvertimeKpi label="Pending hours" value={`${pendingHours.toFixed(1)} h`} detail={`${pending.length} awaiting approval`} accent="text-amber-600" />
+        <OvertimeKpi label="Employees" value={String(uniqueEmployees)} detail="with approved overtime" accent="text-blue-600" />
+        <OvertimeKpi label="Manager queue" value={String(pendingManager.length)} detail="waiting final approval" accent="text-violet-600" />
+      </div>
+
+      <div className="grid lg:grid-cols-[1.15fr_0.85fr]">
+        <div className="border-b border-slate-200 p-5 lg:border-b-0 lg:border-r">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="font-mono text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Approved overtime</p>
+              <h3 className="mt-1 text-lg font-black uppercase text-slate-950">Hours by reason</h3>
+            </div>
+            <span className="font-mono text-xs font-black text-slate-500">{approvedHours.toFixed(1)} H TOTAL</span>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {reasonRows.length === 0 ? (
+              <p className="border border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-semibold text-slate-400">No approved overtime for this month.</p>
+            ) : (
+              reasonRows.map((row) => (
+                <div key={row.reason}>
+                  <div className="mb-1 flex items-center justify-between gap-3 text-sm">
+                    <span className="font-black text-slate-800">{row.reason}</span>
+                    <span className="font-mono text-xs font-black text-slate-600">{row.hours.toFixed(1)} h</span>
+                  </div>
+                  <div className="h-2 overflow-hidden bg-slate-100">
+                    <div
+                      className="h-full bg-slate-800"
+                      style={{ width: `${Math.max(3, (row.hours / maxReasonHours) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-1">
+          <div className="border-b border-slate-200 p-5">
+            <p className="font-mono text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Highest overtime</p>
+            <h3 className="mt-1 text-lg font-black uppercase text-slate-950">Top employees</h3>
+            <div className="mt-3 space-y-2">
+              {topEmployees.length === 0 ? (
+                <p className="text-sm font-semibold text-slate-400">No approved overtime.</p>
+              ) : topEmployees.map((row, index) => (
+                <div key={row.employee.id} className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2 last:border-0">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-slate-900">{index + 1}. {employeeName(row.employee)}</p>
+                    <p className="font-mono text-[10px] font-bold text-slate-500">{row.employee.employeeCode} · {row.employee.department}</p>
+                  </div>
+                  <span className="shrink-0 font-mono text-sm font-black text-slate-900">{row.hours.toFixed(1)} h</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="p-5">
+            <p className="font-mono text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Operational view</p>
+            <h3 className="mt-1 text-lg font-black uppercase text-slate-950">By department</h3>
+            <div className="mt-3 space-y-2">
+              {departmentRows.length === 0 ? (
+                <p className="text-sm font-semibold text-slate-400">No approved overtime.</p>
+              ) : departmentRows.map((row) => (
+                <div key={row.department} className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2 last:border-0">
+                  <span className="truncate text-sm font-black text-slate-800">{row.department}</span>
+                  <span className="shrink-0 font-mono text-sm font-black text-slate-900">{row.hours.toFixed(1)} h</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function OvertimeKpi({
+  label,
+  value,
+  detail,
+  accent = "text-slate-950",
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  accent?: string;
+}) {
+  return (
+    <div className="border-r border-slate-200 px-4 py-4 last:border-r-0">
+      <p className="font-mono text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+      <p className={`mt-1 text-2xl font-black leading-none ${accent}`}>{value}</p>
+      <p className="mt-1 text-xs font-semibold text-slate-500">{detail}</p>
+    </div>
+  );
+}
 
 function EmployeeManagementPanel({
   employees,
