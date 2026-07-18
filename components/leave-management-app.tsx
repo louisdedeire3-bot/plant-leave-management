@@ -1259,7 +1259,18 @@ function EmployeeView(props: EmployeeViewProps) {
                 <Field label={t.endTime}><input required type="time" value={overtimeEnd} onChange={(event) => setOvertimeEnd(event.target.value)} className={inputClass} /></Field>
               </div>
               <Field label={t.breakMinutes}><input min={0} type="number" value={breakMinutes} onChange={(event) => setBreakMinutes(Number(event.target.value))} className={inputClass} /></Field>
-              <Field label={t.reason}><textarea rows={4} value={overtimeReason} onChange={(event) => setOvertimeReason(event.target.value)} placeholder={t.reasonPlaceholder} className={`${inputClass} resize-none`} /></Field>
+              <Field label={t.reason}>
+                <select required value={overtimeReason} onChange={(event) => setOvertimeReason(event.target.value)} className={inputClass}>
+                  <option value="">Select overtime reason</option>
+                  <option value="Loading">Loading</option>
+                  <option value="Production">Production</option>
+                  <option value="Paletizing">Paletizing</option>
+                  <option value="Screening">Screening</option>
+                  <option value="Briquettes">Briquettes</option>
+                  <option value="Fines">Fines</option>
+                  <option value="Maintenance">Maintenance</option>
+                </select>
+              </Field>
               <CalculationTile label={t.totalHours} value={`${calculatedOvertime} ${t.hours}`} />
               <InfoNote text={t.overtimeRule} />
               <SubmitButton saving={saving} label={t.submitOvertime} />
