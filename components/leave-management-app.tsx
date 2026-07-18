@@ -44,7 +44,8 @@ import type {
   RoleView,
 } from "@/lib/types";
 
-type PortalRole = "employee" | "supervisor" | "manager" | "admin";
+type PortalRole = "employee" | "supervisor" | "manager";
+type ManpowerStatus = "GREEN" | "ORANGE" | "RED" | "NOT_ASSESSED";
 type CalendarScale = "day" | "week" | "month";
 type Decision = "approve" | "reject";
 
@@ -103,6 +104,23 @@ interface LeaveRow {
   comment: string | null;
   status: string;
   created_at: string;
+  leave_type?: string | null;
+  manpower_status?: ManpowerStatus | null;
+  manpower_details?: any;
+  assessed_at?: string | null;
+}
+
+type LeaveWithManpower = LeaveRequest & {
+  leaveType: string;
+  manpowerStatus: ManpowerStatus;
+  manpowerDetails: any;
+  assessedAt: string | null;
+};
+
+interface FactoryModeRow {
+  low_season_mode: boolean;
+  active_mode: "LOW" | "HIGH";
+  updated_at: string;
 }
 
 interface OvertimeRow {
@@ -198,7 +216,7 @@ function normalizeStatus(value: string): RequestStatus {
 }
 
 function normalizeRole(value: string): PortalRole {
-  if (value === "supervisor" || value === "manager" || value === "admin") return value;
+  if (value === "supervisor" || value === "manager") return value;
   return "employee";
 }
 
@@ -231,7 +249,7 @@ function mapEmployee(row: EmployeeRow): Employee {
   };
 }
 
-function mapLeave(row: LeaveRow): LeaveRequest {
+function mapLeave(row: LeaveRow): LeaveWithManpower {
   return {
     id: row.id,
     employeeId: row.employee_id,
@@ -241,6 +259,10 @@ function mapLeave(row: LeaveRow): LeaveRequest {
     comment: row.comment ?? "",
     status: normalizeStatus(row.status),
     createdAt: row.created_at,
+    leaveType: row.leave_type ?? "ANNUAL",
+    manpowerStatus: row.manpower_status ?? "NOT_ASSESSED",
+    manpowerDetails: row.manpower_details ?? null,
+    assessedAt: row.assessed_at ?? null,
   };
 }
 
@@ -314,7 +336,8 @@ export function LeaveManagementApp() {
   const [view, setView] = useState<RoleView>("employee");
   const [module, setModule] = useState<EmployeeModule>("leave");
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [requests, setRequests] = useState<LeaveWithManpower[]>([]);
+  const [factoryMode, setFactoryMode] = useState<FactoryModeRow | null>(null);
   const [overtimeRequests, setOvertimeRequests] = useState<OvertimeRequest[]>([]);
   const [department, setDepartment] = useState("all");
   const [calendarAnchor, setCalendarAnchor] = useState(isoDate(new Date()));
@@ -356,10 +379,11 @@ export function LeaveManagementApp() {
       setLoading(true);
       setDatabaseError(null);
       try {
-        const [employeeResult, leaveResult, overtimeResult] = await Promise.all([
+        const [employeeResult, leaveResult, overtimeResult, factoryResult] = await Promise.all([
           supabase.rpc("portal_employees_v2", { p_token: token }),
           supabase.rpc("portal_leave_requests", { p_token: token }),
           supabase.rpc("portal_overtime_requests", { p_token: token }),
+          supabase.rpc("portal_factory_mode", { p_token: token }),
         ]);
         if (employeeResult.error) throw employeeResult.error;
         if (leaveResult.error) throw leaveResult.error;
@@ -367,6 +391,7 @@ export function LeaveManagementApp() {
         setEmployees(((employeeResult.data ?? []) as EmployeeRow[]).map(mapEmployee));
         setRequests(((leaveResult.data ?? []) as LeaveRow[]).map(mapLeave));
         setOvertimeRequests(((overtimeResult.data ?? []) as OvertimeRow[]).map(mapOvertime));
+        if (!factoryResult.error) setFactoryMode((((factoryResult.data ?? []) as FactoryModeRow[])[0]) ?? null);
       } catch (error) {
         const text = errorText(error);
         if (text.toLowerCase().includes("session") || text.toLowerCase().includes("token")) {
@@ -561,6 +586,26 @@ export function LeaveManagementApp() {
     }
   }
 
+  async function reassessLeave(requestId: string) {
+    if (!sessionToken || !supabase) return;
+    setSavingRequestId(requestId);
+    try {
+      const { error } = await supabase.rpc("portal_assess_leave", { p_token: sessionToken, p_request_id: requestId });
+      if (error) throw error;
+      await loadData(sessionToken);
+    } catch (error) { setMessage({ kind: "error", text: errorText(error) }); }
+    finally { setSavingRequestId(null); }
+  }
+
+  async function toggleLowSeason(enabled: boolean) {
+    if (!sessionToken || !supabase) return;
+    try {
+      const { error } = await supabase.rpc("portal_set_low_season_mode", { p_token: sessionToken, p_low_season_mode: enabled });
+      if (error) throw error;
+      await loadData(sessionToken);
+    } catch (error) { setMessage({ kind: "error", text: errorText(error) }); }
+  }
+
   async function decide(kind: "leave" | "overtime", requestId: string, decision: Decision) {
     if (!sessionToken || !supabase) return;
     let comment = "";
@@ -731,10 +776,18 @@ export function LeaveManagementApp() {
               savingRequestId={savingRequestId}
               onLeaveDecision={(id, decision) => void decide("leave", id, decision)}
               onOvertimeDecision={(id, decision) => void decide("overtime", id, decision)}
+              onReassess={(id) => void reassessLeave(id)}
             />
           )}
 
-          {view === "manager" && (profile.role === "manager" || profile.role === "admin") && (
+          {view === "manager" && profile.role === "manager" && (
+            <div className="space-y-6">
+              <section className="border border-slate-700 bg-slate-950 p-5 text-white shadow-xl">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div><p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">Factory mode</p><h2 className="mt-1 text-2xl font-black">{factoryMode?.low_season_mode !== false ? "LOW SEASON" : "HIGH SEASON"}</h2><p className="mt-1 text-sm text-slate-400">{factoryMode?.low_season_mode !== false ? "1 shift · Production 3 lines · Loading 1 container" : "2 shifts · Production 4 lines · Loading 2 containers"}</p></div>
+                  <label className="flex items-center gap-3 border border-slate-700 bg-slate-900 px-4 py-3"><span className="text-sm font-black">LOW SEASON MODE</span><input type="checkbox" checked={factoryMode?.low_season_mode !== false} onChange={(e) => void toggleLowSeason(e.target.checked)} className="h-5 w-5" /></label>
+                </div>
+              </section>
             <ApprovalDashboard
               eyebrow={t.finalApproval}
               title="Plant manager control board"
@@ -752,7 +805,9 @@ export function LeaveManagementApp() {
               savingRequestId={savingRequestId}
               onLeaveDecision={(id, decision) => void decide("leave", id, decision)}
               onOvertimeDecision={(id, decision) => void decide("overtime", id, decision)}
+              onReassess={(id) => void reassessLeave(id)}
             />
+            </div>
           )}
         </main>
       </div>
@@ -1105,22 +1160,24 @@ interface ApprovalDashboardProps {
   title: string;
   stats: Array<{ label: string; value: number; icon: LucideIcon }>;
   employees: Employee[];
-  leaveRequests: LeaveRequest[];
+  leaveRequests: LeaveWithManpower[];
   overtimeRequests: OvertimeRequest[];
   language: Language;
   t: (typeof copy)[Language];
   savingRequestId: string | null;
   onLeaveDecision: (id: string, decision: Decision) => void;
   onOvertimeDecision: (id: string, decision: Decision) => void;
+  onReassess: (id: string) => void;
 }
 
-function ApprovalDashboard({ eyebrow, title, stats, employees, leaveRequests, overtimeRequests, language, t, savingRequestId, onLeaveDecision, onOvertimeDecision }: ApprovalDashboardProps) {
-  return <div className="space-y-6"><section className="border border-slate-700 bg-slate-950 p-6 text-white shadow-2xl sm:p-8"><SectionHeaderDark eyebrow={eyebrow} title={title} icon={LayoutDashboard} /><div className="mt-7 grid gap-px bg-slate-700 sm:grid-cols-2 xl:grid-cols-4">{stats.map(({ label, value, icon: Icon }) => <article key={label} className="bg-slate-900 p-5"><div className="flex items-center justify-between"><span className="grid h-10 w-10 place-items-center border border-slate-700 bg-slate-950 text-amber-400"><Icon size={19} /></span><span className="text-3xl font-black">{value}</span></div><p className="mt-5 font-mono text-xs font-black uppercase tracking-[0.12em] text-slate-400">{label}</p></article>)}</div></section><RequestTable title={t.annualLeaveTab} employees={employees} requests={leaveRequests} language={language} t={t} savingRequestId={savingRequestId} onDecision={onLeaveDecision} /><OvertimeTable title={t.overtimeTab} employees={employees} requests={overtimeRequests} language={language} t={t} savingRequestId={savingRequestId} onDecision={onOvertimeDecision} /></div>;
+function ApprovalDashboard({ eyebrow, title, stats, employees, leaveRequests, overtimeRequests, language, t, savingRequestId, onLeaveDecision, onOvertimeDecision, onReassess }: ApprovalDashboardProps) {
+  return <div className="space-y-6"><section className="border border-slate-700 bg-slate-950 p-6 text-white shadow-2xl sm:p-8"><SectionHeaderDark eyebrow={eyebrow} title={title} icon={LayoutDashboard} /><div className="mt-7 grid gap-px bg-slate-700 sm:grid-cols-2 xl:grid-cols-4">{stats.map(({ label, value, icon: Icon }) => <article key={label} className="bg-slate-900 p-5"><div className="flex items-center justify-between"><span className="grid h-10 w-10 place-items-center border border-slate-700 bg-slate-950 text-amber-400"><Icon size={19} /></span><span className="text-3xl font-black">{value}</span></div><p className="mt-5 font-mono text-xs font-black uppercase tracking-[0.12em] text-slate-400">{label}</p></article>)}</div></section><RequestTable title={t.annualLeaveTab} employees={employees} requests={leaveRequests} language={language} t={t} savingRequestId={savingRequestId} onDecision={onLeaveDecision} onReassess={onReassess} /><OvertimeTable title={t.overtimeTab} employees={employees} requests={overtimeRequests} language={language} t={t} savingRequestId={savingRequestId} onDecision={onOvertimeDecision} /></div>;
 }
 
-function RequestTable({ title, employees, requests, language, t, savingRequestId, onDecision }: { title: string; employees: Employee[]; requests: LeaveRequest[]; language: Language; t: (typeof copy)[Language]; savingRequestId: string | null; onDecision: (id: string, decision: Decision) => void }) {
+function RequestTable({ title, employees, requests, language, t, savingRequestId, onDecision, onReassess }: { title: string; employees: Employee[]; requests: LeaveWithManpower[]; language: Language; t: (typeof copy)[Language]; savingRequestId: string | null; onDecision: (id: string, decision: Decision) => void; onReassess: (id: string) => void }) {
   const a = authCopy[language];
-  return <section className="overflow-hidden border border-slate-400 bg-white shadow-xl"><div className="border-b border-slate-300 bg-slate-200 p-5"><p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-blue-700">{t.pendingRequests}</p><h2 className="mt-1 text-2xl font-black uppercase text-slate-950">{title}</h2></div>{requests.length === 0 ? <div className="p-8"><EmptyState text={t.noPending} /></div> : <div className="overflow-x-auto"><table className="w-full min-w-[1050px] border-collapse"><thead><tr className="bg-slate-900 text-left font-mono text-xs font-black uppercase tracking-[0.12em] text-slate-300"><th className="px-5 py-4">{t.employee}</th><th className="px-5 py-4">{t.department}</th><th className="px-5 py-4">{t.period}</th><th className="px-5 py-4">{t.days}</th><th className="px-5 py-4">{t.status}</th><th className="px-5 py-4">{a.actions}</th></tr></thead><tbody>{requests.map((request) => { const employee = employees.find((item) => item.id === request.employeeId); if (!employee) return null; return <tr key={request.id} className="border-t border-slate-200 hover:bg-slate-50"><td className="px-5 py-4"><EmployeeCell employee={employee} /></td><td className="px-5 py-4 font-semibold text-slate-600">{employee.department}</td><td className="px-5 py-4 font-semibold text-slate-600">{formatDate(request.startDate)} → {formatDate(request.endDate)}</td><td className="px-5 py-4 font-black">{request.days}</td><td className="px-5 py-4"><StatusBadge status={request.status} language={language} /></td><td className="px-5 py-4"><DecisionButtons busy={savingRequestId === request.id} approve={() => onDecision(request.id, "approve")} reject={() => onDecision(request.id, "reject")} language={language} /></td></tr>; })}</tbody></table></div>}</section>;
+  const style: Record<ManpowerStatus,string> = { GREEN:"border-emerald-300 bg-emerald-50 text-emerald-800", ORANGE:"border-amber-300 bg-amber-50 text-amber-900", RED:"border-red-300 bg-red-50 text-red-800", NOT_ASSESSED:"border-slate-300 bg-slate-50 text-slate-700" };
+  return <section className="overflow-hidden border border-slate-400 bg-white shadow-xl"><div className="border-b border-slate-300 bg-slate-200 p-5"><p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-blue-700">{t.pendingRequests}</p><h2 className="mt-1 text-2xl font-black uppercase text-slate-950">{title}</h2></div>{requests.length===0?<div className="p-8"><EmptyState text={t.noPending}/></div>:<div className="divide-y divide-slate-200">{requests.map(request=>{const employee=employees.find(x=>x.id===request.employeeId);if(!employee)return null;const reasons=(request.manpowerDetails?.days??[]).flatMap((d:any)=>(d.reasons??[]).map((r:any)=>({date:d.date,...r}))).slice(0,4);return <article key={request.id} className="p-5"><div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]"><div><EmployeeCell employee={employee}/><p className="mt-3 text-sm font-semibold text-slate-600">{employee.department} · {formatDate(request.startDate)} → {formatDate(request.endDate)} · {request.days} days</p><div className="mt-3"><StatusBadge status={request.status} language={language}/></div></div><div className={`border-2 p-4 ${style[request.manpowerStatus]}`}><div className="flex justify-between gap-3"><div><p className="font-mono text-xs font-black">MANPOWER · {request.manpowerDetails?.mode??"—"} SEASON</p><p className="mt-1 text-lg font-black">{request.manpowerStatus}</p></div><button disabled={savingRequestId===request.id} onClick={()=>onReassess(request.id)} className="border border-current px-3 py-2 text-xs font-black"><RefreshCw size={14} className="inline mr-1"/>RE-ASSESS</button></div>{reasons.map((r:any,i:number)=><p key={i} className="mt-2 bg-white/70 p-2 text-xs font-semibold">{r.message??`${r.area??""} ${r.skill??""} below minimum`}</p>)}</div></div><div className="mt-4 flex justify-end"><DecisionButtons busy={savingRequestId===request.id} approve={()=>onDecision(request.id,"approve")} reject={()=>onDecision(request.id,"reject")} language={language}/></div></article>})}</div>}</section>;
 }
 
 function OvertimeTable({ title, employees, requests, language, t, savingRequestId, onDecision }: { title: string; employees: Employee[]; requests: OvertimeRequest[]; language: Language; t: (typeof copy)[Language]; savingRequestId: string | null; onDecision: (id: string, decision: Decision) => void }) {
