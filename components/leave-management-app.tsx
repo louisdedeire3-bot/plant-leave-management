@@ -123,6 +123,21 @@ interface FactoryModeRow {
   updated_at: string;
 }
 
+type AbsenceClassification = "UNJUSTIFIED" | "SICK" | "ANNUAL" | "COMPASSIONATE";
+
+interface AbsenceRow {
+  id: string;
+  employee_id: string;
+  employee_code: string;
+  employee_name: string;
+  department: string;
+  absence_date: string;
+  classification: AbsenceClassification;
+  manager_comment: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 interface OvertimeRow {
   id: string;
   employee_id: string;
@@ -338,6 +353,10 @@ export function LeaveManagementApp() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [requests, setRequests] = useState<LeaveWithManpower[]>([]);
   const [factoryMode, setFactoryMode] = useState<FactoryModeRow | null>(null);
+  const [absences, setAbsences] = useState<AbsenceRow[]>([]);
+  const [absenceEmployeeId, setAbsenceEmployeeId] = useState("");
+  const [absenceDate, setAbsenceDate] = useState(isoDate(new Date()));
+  const [absenceBusy, setAbsenceBusy] = useState<string | null>(null);
   const [overtimeRequests, setOvertimeRequests] = useState<OvertimeRequest[]>([]);
   const [department, setDepartment] = useState("all");
   const [calendarAnchor, setCalendarAnchor] = useState(isoDate(new Date()));
@@ -379,11 +398,16 @@ export function LeaveManagementApp() {
       setLoading(true);
       setDatabaseError(null);
       try {
-        const [employeeResult, leaveResult, overtimeResult, factoryResult] = await Promise.all([
+        const [employeeResult, leaveResult, overtimeResult, factoryResult, absenceResult] = await Promise.all([
           supabase.rpc("portal_employees_v2", { p_token: token }),
           supabase.rpc("portal_leave_requests", { p_token: token }),
           supabase.rpc("portal_overtime_requests", { p_token: token }),
           supabase.rpc("portal_factory_mode", { p_token: token }),
+          supabase.rpc("portal_absences", {
+            p_token: token,
+            p_date_from: isoDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
+            p_date_to: isoDate(new Date(new Date().getFullYear(), new Date().getMonth() + 2, 0)),
+          }),
         ]);
         if (employeeResult.error) throw employeeResult.error;
         if (leaveResult.error) throw leaveResult.error;
@@ -392,6 +416,7 @@ export function LeaveManagementApp() {
         setRequests(((leaveResult.data ?? []) as LeaveRow[]).map(mapLeave));
         setOvertimeRequests(((overtimeResult.data ?? []) as OvertimeRow[]).map(mapOvertime));
         if (!factoryResult.error) setFactoryMode((((factoryResult.data ?? []) as FactoryModeRow[])[0]) ?? null);
+        if (!absenceResult.error) setAbsences((absenceResult.data ?? []) as AbsenceRow[]);
       } catch (error) {
         const text = errorText(error);
         if (text.toLowerCase().includes("session") || text.toLowerCase().includes("token")) {
@@ -606,6 +631,47 @@ export function LeaveManagementApp() {
     } catch (error) { setMessage({ kind: "error", text: errorText(error) }); }
   }
 
+  async function markAbsent() {
+    if (!sessionToken || !supabase || !absenceEmployeeId || !absenceDate) return;
+    setAbsenceBusy("new");
+    setMessage(null);
+    try {
+      const { error } = await supabase.rpc("portal_mark_absent", {
+        p_token: sessionToken,
+        p_employee_id: absenceEmployeeId,
+        p_absence_date: absenceDate,
+      });
+      if (error) throw error;
+      setAbsenceEmployeeId("");
+      setMessage({ kind: "success", text: "Absence recorded." });
+      await loadData(sessionToken);
+    } catch (error) {
+      setMessage({ kind: "error", text: errorText(error) });
+    } finally {
+      setAbsenceBusy(null);
+    }
+  }
+
+  async function reclassifyAbsence(absenceId: string, classification: AbsenceClassification) {
+    if (!sessionToken || !supabase) return;
+    setAbsenceBusy(absenceId);
+    setMessage(null);
+    try {
+      const { error } = await supabase.rpc("portal_reclassify_absence", {
+        p_token: sessionToken,
+        p_absence_id: absenceId,
+        p_classification: classification,
+        p_manager_comment: null,
+      });
+      if (error) throw error;
+      await loadData(sessionToken);
+    } catch (error) {
+      setMessage({ kind: "error", text: errorText(error) });
+    } finally {
+      setAbsenceBusy(null);
+    }
+  }
+
   async function decide(kind: "leave" | "overtime", requestId: string, decision: Decision) {
     if (!sessionToken || !supabase) return;
     let comment = "";
@@ -760,6 +826,21 @@ export function LeaveManagementApp() {
           )}
 
           {view === "supervisor" && profile.role === "supervisor" && (
+            <div className="space-y-6">
+              <AttendanceBoard
+                title="Today / Attendance"
+                employees={employees}
+                absences={absences}
+                requests={requests}
+                selectedEmployeeId={absenceEmployeeId}
+                absenceDate={absenceDate}
+                busyId={absenceBusy}
+                isManager={false}
+                onEmployeeChange={setAbsenceEmployeeId}
+                onDateChange={setAbsenceDate}
+                onMarkAbsent={() => void markAbsent()}
+                onReclassify={() => {}}
+              />
             <ApprovalDashboard
               eyebrow={t.firstApproval}
               title="Supervisor control board"
@@ -778,6 +859,7 @@ export function LeaveManagementApp() {
               onOvertimeDecision={(id, decision) => void decide("overtime", id, decision)}
               onReassess={(id) => void reassessLeave(id)}
             />
+            </div>
           )}
 
           {view === "manager" && profile.role === "manager" && (
@@ -788,6 +870,20 @@ export function LeaveManagementApp() {
                   <label className="flex items-center gap-3 border border-slate-700 bg-slate-900 px-4 py-3"><span className="text-sm font-black">LOW SEASON MODE</span><input type="checkbox" checked={factoryMode?.low_season_mode !== false} onChange={(e) => void toggleLowSeason(e.target.checked)} className="h-5 w-5" /></label>
                 </div>
               </section>
+              <AttendanceBoard
+                title="Today / Attendance"
+                employees={employees}
+                absences={absences}
+                requests={requests}
+                selectedEmployeeId={absenceEmployeeId}
+                absenceDate={absenceDate}
+                busyId={absenceBusy}
+                isManager={true}
+                onEmployeeChange={setAbsenceEmployeeId}
+                onDateChange={setAbsenceDate}
+                onMarkAbsent={() => void markAbsent()}
+                onReclassify={(id, classification) => void reclassifyAbsence(id, classification)}
+              />
             <ApprovalDashboard
               eyebrow={t.finalApproval}
               title="Plant manager control board"
@@ -1170,6 +1266,102 @@ interface ApprovalDashboardProps {
   onReassess: (id: string) => void;
 }
 
+
+function AttendanceBoard({
+  title,
+  employees,
+  absences,
+  requests,
+  selectedEmployeeId,
+  absenceDate,
+  busyId,
+  isManager,
+  onEmployeeChange,
+  onDateChange,
+  onMarkAbsent,
+  onReclassify,
+}: {
+  title: string;
+  employees: Employee[];
+  absences: AbsenceRow[];
+  requests: LeaveWithManpower[];
+  selectedEmployeeId: string;
+  absenceDate: string;
+  busyId: string | null;
+  isManager: boolean;
+  onEmployeeChange: (value: string) => void;
+  onDateChange: (value: string) => void;
+  onMarkAbsent: () => void;
+  onReclassify: (id: string, classification: AbsenceClassification) => void;
+}) {
+  const today = isoDate(new Date());
+  const todayAbsences = absences.filter((item) => item.absence_date === today);
+  const todayLeave = requests.filter((request) => request.status === "approved" && today >= request.startDate && today <= request.endDate);
+
+  const classificationStyle: Record<AbsenceClassification, string> = {
+    UNJUSTIFIED: "bg-red-100 text-red-800 ring-red-200",
+    SICK: "bg-violet-100 text-violet-800 ring-violet-200",
+    ANNUAL: "bg-blue-100 text-blue-800 ring-blue-200",
+    COMPASSIONATE: "bg-amber-100 text-amber-900 ring-amber-200",
+  };
+
+  return (
+    <section className="border border-slate-300 bg-white shadow-xl">
+      <div className="border-b border-slate-300 bg-slate-950 p-5 text-white">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">Attendance control</p>
+            <h2 className="mt-1 text-2xl font-black uppercase">{title}</h2>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="border border-slate-700 bg-slate-900 px-4 py-2"><p className="text-xl font-black">{employees.length}</p><p className="text-[10px] font-black uppercase text-slate-400">Team</p></div>
+            <div className="border border-slate-700 bg-slate-900 px-4 py-2"><p className="text-xl font-black text-amber-400">{todayLeave.length}</p><p className="text-[10px] font-black uppercase text-slate-400">On leave</p></div>
+            <div className="border border-slate-700 bg-slate-900 px-4 py-2"><p className="text-xl font-black text-red-400">{todayAbsences.length}</p><p className="text-[10px] font-black uppercase text-slate-400">Absent</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 border-b border-slate-200 bg-slate-50 p-5 lg:grid-cols-[1fr_220px_auto]">
+        <label>
+          <span className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-500">Employee</span>
+          <select value={selectedEmployeeId} onChange={(e) => onEmployeeChange(e.target.value)} className={inputClass}>
+            <option value="">Select employee</option>
+            {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.employeeCode} — {employeeName(employee)} — {employee.department}</option>)}
+          </select>
+        </label>
+        <label>
+          <span className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-500">Absence date</span>
+          <input type="date" value={absenceDate} onChange={(e) => onDateChange(e.target.value)} className={inputClass} />
+        </label>
+        <div className="flex items-end">
+          <button type="button" disabled={!selectedEmployeeId || !absenceDate || busyId === "new"} onClick={onMarkAbsent} className="h-[52px] w-full bg-red-600 px-5 font-black uppercase text-white hover:bg-red-700 disabled:opacity-50 lg:w-auto">
+            {busyId === "new" ? "Saving..." : "Mark Absent"}
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[900px] border-collapse">
+          <thead><tr className="bg-slate-200 text-left font-mono text-xs font-black uppercase tracking-[0.12em] text-slate-600"><th className="px-5 py-3">Employee</th><th className="px-5 py-3">Department</th><th className="px-5 py-3">Date</th><th className="px-5 py-3">Classification</th>{isManager && <th className="px-5 py-3">Manager action</th>}</tr></thead>
+          <tbody>
+            {absences.length === 0 ? <tr><td colSpan={isManager ? 5 : 4} className="px-5 py-8 text-center font-bold text-slate-400">No absences recorded in this period.</td></tr> :
+              absences.slice(0, 30).map((absence) => (
+                <tr key={absence.id} className="border-t border-slate-200">
+                  <td className="px-5 py-4"><p className="font-black text-slate-950">{absence.employee_name}</p><p className="font-mono text-xs text-slate-500">{absence.employee_code}</p></td>
+                  <td className="px-5 py-4 font-semibold text-slate-600">{absence.department}</td>
+                  <td className="px-5 py-4 font-semibold">{formatDate(absence.absence_date)}</td>
+                  <td className="px-5 py-4"><span className={`inline-flex px-3 py-1.5 text-xs font-black ring-1 ${classificationStyle[absence.classification]}`}>{absence.classification.replace("_"," ")}</span></td>
+                  {isManager && <td className="px-5 py-4"><select disabled={busyId === absence.id} value={absence.classification} onChange={(e) => onReclassify(absence.id, e.target.value as AbsenceClassification)} className="border border-slate-300 bg-white px-3 py-2 text-sm font-black"><option value="UNJUSTIFIED">Unjustified</option><option value="SICK">Sick Leave</option><option value="ANNUAL">Annual Leave</option><option value="COMPASSIONATE">Compassionate Leave</option></select></td>}
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function ApprovalDashboard({ eyebrow, title, stats, employees, leaveRequests, overtimeRequests, language, t, savingRequestId, onLeaveDecision, onOvertimeDecision, onReassess }: ApprovalDashboardProps) {
   return <div className="space-y-6"><section className="border border-slate-700 bg-slate-950 p-6 text-white shadow-2xl sm:p-8"><SectionHeaderDark eyebrow={eyebrow} title={title} icon={LayoutDashboard} /><div className="mt-7 grid gap-px bg-slate-700 sm:grid-cols-2 xl:grid-cols-4">{stats.map(({ label, value, icon: Icon }) => <article key={label} className="bg-slate-900 p-5"><div className="flex items-center justify-between"><span className="grid h-10 w-10 place-items-center border border-slate-700 bg-slate-950 text-amber-400"><Icon size={19} /></span><span className="text-3xl font-black">{value}</span></div><p className="mt-5 font-mono text-xs font-black uppercase tracking-[0.12em] text-slate-400">{label}</p></article>)}</div></section><RequestTable title={t.annualLeaveTab} employees={employees} requests={leaveRequests} language={language} t={t} savingRequestId={savingRequestId} onDecision={onLeaveDecision} onReassess={onReassess} /><OvertimeTable title={t.overtimeTab} employees={employees} requests={overtimeRequests} language={language} t={t} savingRequestId={savingRequestId} onDecision={onOvertimeDecision} /></div>;
 }
@@ -1177,7 +1369,7 @@ function ApprovalDashboard({ eyebrow, title, stats, employees, leaveRequests, ov
 function RequestTable({ title, employees, requests, language, t, savingRequestId, onDecision, onReassess }: { title: string; employees: Employee[]; requests: LeaveWithManpower[]; language: Language; t: (typeof copy)[Language]; savingRequestId: string | null; onDecision: (id: string, decision: Decision) => void; onReassess: (id: string) => void }) {
   const a = authCopy[language];
   const style: Record<ManpowerStatus,string> = { GREEN:"border-emerald-300 bg-emerald-50 text-emerald-800", ORANGE:"border-amber-300 bg-amber-50 text-amber-900", RED:"border-red-300 bg-red-50 text-red-800", NOT_ASSESSED:"border-slate-300 bg-slate-50 text-slate-700" };
-  return <section className="overflow-hidden border border-slate-400 bg-white shadow-xl"><div className="border-b border-slate-300 bg-slate-200 p-5"><p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-blue-700">{t.pendingRequests}</p><h2 className="mt-1 text-2xl font-black uppercase text-slate-950">{title}</h2></div>{requests.length===0?<div className="p-8"><EmptyState text={t.noPending}/></div>:<div className="divide-y divide-slate-200">{requests.map(request=>{const employee=employees.find(x=>x.id===request.employeeId);if(!employee)return null;const reasons=(request.manpowerDetails?.days??[]).flatMap((d:any)=>(d.reasons??[]).map((r:any)=>({date:d.date,...r}))).slice(0,4);return <article key={request.id} className="p-5"><div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]"><div><EmployeeCell employee={employee}/><p className="mt-3 text-sm font-semibold text-slate-600">{employee.department} · {formatDate(request.startDate)} → {formatDate(request.endDate)} · {request.days} days</p><div className="mt-3"><StatusBadge status={request.status} language={language}/></div></div><div className={`border-2 p-4 ${style[request.manpowerStatus]}`}><div className="flex justify-between gap-3"><div><p className="font-mono text-xs font-black">MANPOWER · {request.manpowerDetails?.mode??"—"} SEASON</p><p className="mt-1 text-lg font-black">{request.manpowerStatus}</p></div><button disabled={savingRequestId===request.id} onClick={()=>onReassess(request.id)} className="border border-current px-3 py-2 text-xs font-black"><RefreshCw size={14} className="inline mr-1"/>RE-ASSESS</button></div>{reasons.map((r:any,i:number)=><p key={i} className="mt-2 bg-white/70 p-2 text-xs font-semibold">{r.message??`${r.area??""} ${r.skill??""} below minimum`}</p>)}</div></div><div className="mt-4 flex justify-end"><DecisionButtons busy={savingRequestId===request.id} approve={()=>onDecision(request.id,"approve")} reject={()=>onDecision(request.id,"reject")} language={language}/></div></article>})}</div>}</section>;
+  return <section className="overflow-hidden border border-slate-400 bg-white shadow-xl"><div className="border-b border-slate-300 bg-slate-200 p-5"><p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-blue-700">{t.pendingRequests}</p><h2 className="mt-1 text-2xl font-black uppercase text-slate-950">{title}</h2></div>{requests.length===0?<div className="p-8"><EmptyState text={t.noPending}/></div>:<div className="divide-y divide-slate-200">{requests.map(request=>{const employee=employees.find(x=>x.id===request.employeeId);if(!employee)return null;const rawReasons=(request.manpowerDetails?.days??[]).flatMap((d:any)=>(d.reasons??[]).map((r:any)=>({date:d.date,...r})));const reasons=Array.from(rawReasons.reduce((m:any,r:any)=>{const k=`${r.type??""}|${r.area??""}|${r.skill??""}|${r.message??""}`;if(!m.has(k))m.set(k,{...r,dates:[r.date]});else m.get(k).dates.push(r.date);return m;},new Map()).values()).slice(0,4);return <article key={request.id} className="p-5"><div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]"><div><EmployeeCell employee={employee}/><p className="mt-3 text-sm font-semibold text-slate-600">{employee.department} · {formatDate(request.startDate)} → {formatDate(request.endDate)} · {request.days} days</p><div className="mt-3"><StatusBadge status={request.status} language={language}/></div></div><div className={`border-2 p-4 ${style[request.manpowerStatus]}`}><div className="flex justify-between gap-3"><div><p className="font-mono text-xs font-black">MANPOWER · {request.manpowerDetails?.mode??"—"} SEASON</p><p className="mt-1 text-lg font-black">{request.manpowerStatus}</p></div><button disabled={savingRequestId===request.id} onClick={()=>onReassess(request.id)} className="border border-current px-3 py-2 text-xs font-black"><RefreshCw size={14} className="inline mr-1"/>RE-ASSESS</button></div>{reasons.map((r:any,i:number)=><p key={i} className="mt-2 bg-white/70 p-2 text-xs font-semibold">{r.message??`${r.area??""} ${r.skill??""} below minimum`}</p>)}</div></div><div className="mt-4 flex justify-end"><DecisionButtons busy={savingRequestId===request.id} approve={()=>onDecision(request.id,"approve")} reject={()=>onDecision(request.id,"reject")} language={language}/></div></article>})}</div>}</section>;
 }
 
 function OvertimeTable({ title, employees, requests, language, t, savingRequestId, onDecision }: { title: string; employees: Employee[]; requests: OvertimeRequest[]; language: Language; t: (typeof copy)[Language]; savingRequestId: string | null; onDecision: (id: string, decision: Decision) => void }) {
