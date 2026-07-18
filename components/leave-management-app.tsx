@@ -15,7 +15,10 @@ import {
   LoaderCircle,
   LockKeyhole,
   LogOut,
+  Pencil,
+  Plus,
   RefreshCw,
+  Search,
   ShieldCheck,
   TimerReset,
   UserRound,
@@ -24,6 +27,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Fragment, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import {
   calculateLeaveDays,
   calculateOvertimeHours,
@@ -136,6 +140,41 @@ interface AbsenceRow {
   manager_comment: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface AdminEmployeeRow {
+  id: string;
+  employee_code: string;
+  first_name: string;
+  surname: string;
+  department: string;
+  position_title: string;
+  primary_role: string;
+  active: boolean;
+  portal_role: PortalRole;
+  supervisor_employee_id: string | null;
+  supervisor_name: string;
+  skill_codes: string[];
+  has_account: boolean;
+}
+
+interface EmployeeAdminOptions {
+  departments: string[];
+  skills: Array<{ code: string; name: string; category: string }>;
+}
+
+interface EmployeeEditorState {
+  id: string | null;
+  employeeCode: string;
+  firstName: string;
+  surname: string;
+  department: string;
+  positionTitle: string;
+  primaryRole: string;
+  active: boolean;
+  portalRole: PortalRole;
+  supervisorEmployeeId: string;
+  skillCodes: string[];
 }
 
 interface OvertimeRow {
@@ -357,6 +396,11 @@ export function LeaveManagementApp() {
   const [absenceEmployeeId, setAbsenceEmployeeId] = useState("");
   const [absenceDate, setAbsenceDate] = useState(isoDate(new Date()));
   const [absenceBusy, setAbsenceBusy] = useState<string | null>(null);
+  const [managedEmployees, setManagedEmployees] = useState<AdminEmployeeRow[]>([]);
+  const [employeeAdminOptions, setEmployeeAdminOptions] = useState<EmployeeAdminOptions>({ departments: [], skills: [] });
+  const [employeeEditor, setEmployeeEditor] = useState<EmployeeEditorState | null>(null);
+  const [employeeAdminBusy, setEmployeeAdminBusy] = useState(false);
+  const [newAccessCode, setNewAccessCode] = useState<{ employeeCode: string; code: string } | null>(null);
   const [overtimeRequests, setOvertimeRequests] = useState<OvertimeRequest[]>([]);
   const [department, setDepartment] = useState("all");
   const [calendarAnchor, setCalendarAnchor] = useState(isoDate(new Date()));
@@ -387,6 +431,9 @@ export function LeaveManagementApp() {
     setEmployees([]);
     setRequests([]);
     setOvertimeRequests([]);
+    setManagedEmployees([]);
+    setEmployeeEditor(null);
+    setNewAccessCode(null);
     setMessage(null);
     setDatabaseError(null);
     setView("employee");
@@ -398,7 +445,7 @@ export function LeaveManagementApp() {
       setLoading(true);
       setDatabaseError(null);
       try {
-        const [employeeResult, leaveResult, overtimeResult, factoryResult, absenceResult] = await Promise.all([
+        const [employeeResult, leaveResult, overtimeResult, factoryResult, absenceResult, adminEmployeeResult, adminOptionsResult] = await Promise.all([
           supabase.rpc("portal_employees_v2", { p_token: token }),
           supabase.rpc("portal_leave_requests", { p_token: token }),
           supabase.rpc("portal_overtime_requests", { p_token: token }),
@@ -408,6 +455,8 @@ export function LeaveManagementApp() {
             p_date_from: isoDate(new Date(new Date().getFullYear() - 1, 0, 1)),
             p_date_to: isoDate(new Date(new Date().getFullYear() + 1, 11, 31)),
           }),
+          supabase.rpc("portal_employee_admin_list", { p_token: token }),
+          supabase.rpc("portal_employee_admin_options", { p_token: token }),
         ]);
         if (employeeResult.error) throw employeeResult.error;
         if (leaveResult.error) throw leaveResult.error;
@@ -417,6 +466,8 @@ export function LeaveManagementApp() {
         setOvertimeRequests(((overtimeResult.data ?? []) as OvertimeRow[]).map(mapOvertime));
         if (!factoryResult.error) setFactoryMode((((factoryResult.data ?? []) as FactoryModeRow[])[0]) ?? null);
         if (!absenceResult.error) setAbsences((absenceResult.data ?? []) as AbsenceRow[]);
+        if (!adminEmployeeResult.error) setManagedEmployees((adminEmployeeResult.data ?? []) as AdminEmployeeRow[]);
+        if (!adminOptionsResult.error && adminOptionsResult.data) setEmployeeAdminOptions(adminOptionsResult.data as EmployeeAdminOptions);
       } catch (error) {
         const text = errorText(error);
         if (text.toLowerCase().includes("session") || text.toLowerCase().includes("token")) {
@@ -608,6 +659,93 @@ export function LeaveManagementApp() {
       setMessage({ kind: "error", text: errorText(error) });
     } finally {
       setSaving(false);
+    }
+  }
+
+  function openNewEmployee() {
+    setNewAccessCode(null);
+    setEmployeeEditor({
+      id: null,
+      employeeCode: "",
+      firstName: "",
+      surname: "",
+      department: "",
+      positionTitle: "",
+      primaryRole: "",
+      active: true,
+      portalRole: "employee",
+      supervisorEmployeeId: "",
+      skillCodes: [],
+    });
+  }
+
+  function openEditEmployee(employee: AdminEmployeeRow) {
+    setNewAccessCode(null);
+    setEmployeeEditor({
+      id: employee.id,
+      employeeCode: employee.employee_code,
+      firstName: employee.first_name,
+      surname: employee.surname,
+      department: employee.department === "Unassigned" ? "" : employee.department,
+      positionTitle: employee.position_title ?? "",
+      primaryRole: employee.primary_role ?? "",
+      active: employee.active,
+      portalRole: employee.portal_role ?? "employee",
+      supervisorEmployeeId: employee.supervisor_employee_id ?? "",
+      skillCodes: employee.skill_codes ?? [],
+    });
+  }
+
+  async function saveEmployeeEditor() {
+    if (!sessionToken || !supabase || !employeeEditor) return;
+    setEmployeeAdminBusy(true);
+    setMessage(null);
+    setNewAccessCode(null);
+    try {
+      const { data, error } = await supabase.rpc("portal_save_employee", {
+        p_token: sessionToken,
+        p_employee_uuid: employeeEditor.id,
+        p_employee_code: employeeEditor.employeeCode,
+        p_first_name: employeeEditor.firstName,
+        p_surname: employeeEditor.surname,
+        p_department: employeeEditor.department || "Unassigned",
+        p_position_title: employeeEditor.positionTitle,
+        p_primary_role: employeeEditor.primaryRole,
+        p_active: employeeEditor.active,
+        p_portal_role: employeeEditor.portalRole,
+        p_supervisor_employee_id: employeeEditor.supervisorEmployeeId || null,
+        p_skill_codes: employeeEditor.skillCodes,
+      });
+      if (error) throw error;
+      const row = ((data ?? []) as Array<{ employee_code: string; access_code: string | null }>)[0];
+      if (row?.access_code) {
+        setNewAccessCode({ employeeCode: row.employee_code, code: row.access_code });
+      }
+      setEmployeeEditor(null);
+      setMessage({ kind: "success", text: "Employee saved." });
+      await loadData(sessionToken);
+    } catch (error) {
+      setMessage({ kind: "error", text: errorText(error) });
+    } finally {
+      setEmployeeAdminBusy(false);
+    }
+  }
+
+  async function resetEmployeeAccessCode(employee: AdminEmployeeRow) {
+    if (!sessionToken || !supabase) return;
+    setEmployeeAdminBusy(true);
+    setMessage(null);
+    try {
+      const { data, error } = await supabase.rpc("portal_reset_employee_access_code", {
+        p_token: sessionToken,
+        p_employee_uuid: employee.id,
+      });
+      if (error) throw error;
+      setNewAccessCode({ employeeCode: employee.employee_code, code: String(data ?? "") });
+    } catch (error) {
+      setMessage({ kind: "error", text: errorText(error) });
+    } finally {
+      setEmployeeAdminBusy(false);
     }
   }
 
@@ -871,6 +1009,20 @@ export function LeaveManagementApp() {
                   <label className="flex items-center gap-3 border border-slate-700 bg-slate-900 px-4 py-3"><span className="text-sm font-black">LOW SEASON MODE</span><input type="checkbox" checked={factoryMode?.low_season_mode !== false} onChange={(e) => void toggleLowSeason(e.target.checked)} className="h-5 w-5" /></label>
                 </div>
               </section>
+              <EmployeeManagementPanel
+                employees={managedEmployees}
+                options={employeeAdminOptions}
+                editor={employeeEditor}
+                busy={employeeAdminBusy}
+                accessCode={newAccessCode}
+                onNew={openNewEmployee}
+                onEdit={openEditEmployee}
+                onClose={() => setEmployeeEditor(null)}
+                onChange={setEmployeeEditor}
+                onSave={() => void saveEmployeeEditor()}
+                onResetCode={(employee) => void resetEmployeeAccessCode(employee)}
+                onDismissCode={() => setNewAccessCode(null)}
+              />
               <AttendanceBoard
                 title="Today / Attendance"
                 employees={employees}
@@ -1317,6 +1469,155 @@ interface ApprovalDashboardProps {
   onReassess: (id: string) => void;
 }
 
+
+
+function EmployeeManagementPanel({
+  employees,
+  options,
+  editor,
+  busy,
+  accessCode,
+  onNew,
+  onEdit,
+  onClose,
+  onChange,
+  onSave,
+  onResetCode,
+  onDismissCode,
+}: {
+  employees: AdminEmployeeRow[];
+  options: EmployeeAdminOptions;
+  editor: EmployeeEditorState | null;
+  busy: boolean;
+  accessCode: { employeeCode: string; code: string } | null;
+  onNew: () => void;
+  onEdit: (employee: AdminEmployeeRow) => void;
+  onClose: () => void;
+  onChange: (editor: EmployeeEditorState) => void;
+  onSave: () => void;
+  onResetCode: (employee: AdminEmployeeRow) => void;
+  onDismissCode: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
+
+  const filtered = employees.filter((employee) => {
+    if (!showInactive && !employee.active) return false;
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return [
+      employee.employee_code,
+      employee.first_name,
+      employee.surname,
+      employee.department,
+      employee.position_title,
+      employee.primary_role,
+    ].some((value) => String(value ?? "").toLowerCase().includes(q));
+  });
+
+  const supervisors = employees.filter((employee) => employee.active && (employee.portal_role === "supervisor" || employee.portal_role === "manager"));
+
+  return (
+    <section className="border border-slate-300 bg-white shadow-xl">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-300 bg-slate-950 p-5 text-white">
+        <div>
+          <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">Employee master data</p>
+          <h2 className="mt-1 text-2xl font-black uppercase">Employees</h2>
+          <p className="mt-1 text-sm text-slate-400">Add, correct or deactivate employees without using Supabase SQL.</p>
+        </div>
+        <button type="button" onClick={onNew} className="inline-flex items-center gap-2 bg-blue-600 px-4 py-3 text-sm font-black uppercase hover:bg-blue-500">
+          <Plus size={17} /> Add employee
+        </button>
+      </div>
+
+      {accessCode && (
+        <div className="m-5 flex flex-wrap items-center justify-between gap-4 border-2 border-emerald-400 bg-emerald-50 p-4 text-emerald-950">
+          <div>
+            <p className="font-mono text-xs font-black uppercase tracking-[0.14em]">Access code generated — show once</p>
+            <p className="mt-1 text-lg font-black">{accessCode.employeeCode} · <span className="font-mono text-2xl tracking-[0.18em]">{accessCode.code}</span></p>
+          </div>
+          <button onClick={onDismissCode} className="border border-emerald-700 px-3 py-2 text-xs font-black uppercase">Dismiss</button>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-3 border-b border-slate-200 bg-slate-50 p-4">
+        <label className="relative min-w-[260px] flex-1">
+          <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search ID, name, department, role..." className="h-11 w-full border border-slate-300 bg-white pl-10 pr-3 text-sm font-semibold outline-none focus:border-blue-500" />
+        </label>
+        <label className="flex items-center gap-2 border border-slate-300 bg-white px-3 text-sm font-black">
+          <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+          Show inactive
+        </label>
+        <div className="flex items-center border border-slate-300 bg-white px-4 text-sm font-black text-slate-600">
+          {filtered.length} shown / {employees.length} total
+        </div>
+      </div>
+
+      <div className="max-h-[520px] overflow-auto">
+        <table className="w-full min-w-[1050px] border-collapse">
+          <thead className="sticky top-0 z-10 bg-slate-200 text-left font-mono text-xs font-black uppercase tracking-[0.1em] text-slate-600">
+            <tr><th className="px-4 py-3">Employee</th><th className="px-4 py-3">Department</th><th className="px-4 py-3">Position / Role</th><th className="px-4 py-3">Skills</th><th className="px-4 py-3">Access</th><th className="px-4 py-3">Actions</th></tr>
+          </thead>
+          <tbody>
+            {filtered.map((employee) => (
+              <tr key={employee.id} className={`border-t border-slate-200 ${employee.active ? "bg-white" : "bg-slate-100 opacity-70"}`}>
+                <td className="px-4 py-3"><p className="font-black text-slate-950">{employee.first_name} {employee.surname}</p><p className="font-mono text-xs font-bold text-slate-500">{employee.employee_code} · {employee.active ? "ACTIVE" : "INACTIVE"}</p></td>
+                <td className="px-4 py-3 font-semibold text-slate-700">{employee.department}</td>
+                <td className="px-4 py-3"><p className="font-black text-slate-900">{employee.position_title || "—"}</p><p className="text-xs font-semibold uppercase text-slate-500">{employee.primary_role || "No primary role"} · {employee.portal_role}</p></td>
+                <td className="px-4 py-3"><div className="flex max-w-[330px] flex-wrap gap-1">{(employee.skill_codes ?? []).map((skill) => <span key={skill} className="bg-slate-100 px-2 py-1 font-mono text-[10px] font-black text-slate-700">{skill.replaceAll("_"," ")}</span>)}</div></td>
+                <td className="px-4 py-3"><span className={`inline-flex px-2 py-1 text-xs font-black ${employee.has_account ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-600"}`}>{employee.has_account ? "PORTAL READY" : "NO ACCOUNT"}</span></td>
+                <td className="px-4 py-3"><div className="flex gap-2"><button onClick={() => onEdit(employee)} className="inline-flex items-center gap-1 border border-slate-300 bg-white px-3 py-2 text-xs font-black uppercase hover:border-blue-500 hover:text-blue-700"><Pencil size={14}/> Edit</button><button disabled={!employee.has_account || busy} onClick={() => onResetCode(employee)} className="inline-flex items-center gap-1 border border-slate-300 bg-white px-3 py-2 text-xs font-black uppercase hover:border-amber-500 hover:text-amber-700 disabled:opacity-40"><KeyRound size={14}/> Reset code</button></div></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {editor && (
+        <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-950/70 p-4 sm:p-8">
+          <div className="w-full max-w-4xl border border-slate-400 bg-white shadow-2xl">
+            <div className="flex items-center justify-between bg-slate-950 p-5 text-white">
+              <div><p className="font-mono text-xs font-black uppercase tracking-[0.16em] text-amber-400">Employee management</p><h3 className="text-2xl font-black">{editor.id ? "Edit employee" : "Add employee"}</h3></div>
+              <button onClick={onClose} className="grid h-10 w-10 place-items-center border border-slate-700 hover:bg-slate-800"><X size={18}/></button>
+            </div>
+
+            <div className="grid gap-4 p-5 sm:grid-cols-2">
+              <EditorField label="Employee ID"><input value={editor.employeeCode} onChange={(e) => onChange({ ...editor, employeeCode: e.target.value.toUpperCase() })} placeholder="GCN503" className={inputClass} /></EditorField>
+              <EditorField label="Status"><select value={editor.active ? "active" : "inactive"} onChange={(e) => onChange({ ...editor, active: e.target.value === "active" })} className={inputClass}><option value="active">Active</option><option value="inactive">Inactive</option></select></EditorField>
+              <EditorField label="First name"><input value={editor.firstName} onChange={(e) => onChange({ ...editor, firstName: e.target.value })} className={inputClass} /></EditorField>
+              <EditorField label="Surname"><input value={editor.surname} onChange={(e) => onChange({ ...editor, surname: e.target.value })} className={inputClass} /></EditorField>
+              <EditorField label="Department"><input list="employee-departments" value={editor.department} onChange={(e) => onChange({ ...editor, department: e.target.value })} placeholder="Production" className={inputClass}/><datalist id="employee-departments">{options.departments.map((d) => <option key={d} value={d}/>)}</datalist></EditorField>
+              <EditorField label="Position title"><input value={editor.positionTitle} onChange={(e) => onChange({ ...editor, positionTitle: e.target.value })} placeholder="Machine Operator" className={inputClass}/></EditorField>
+              <EditorField label="Primary role"><input value={editor.primaryRole} onChange={(e) => onChange({ ...editor, primaryRole: e.target.value })} placeholder="Machine Operator" className={inputClass}/></EditorField>
+              <EditorField label="Portal role"><select value={editor.portalRole} onChange={(e) => onChange({ ...editor, portalRole: e.target.value as PortalRole })} className={inputClass}><option value="employee">Employee</option><option value="supervisor">Supervisor</option><option value="manager">Manager</option></select></EditorField>
+              <EditorField label="Supervisor"><select value={editor.supervisorEmployeeId} onChange={(e) => onChange({ ...editor, supervisorEmployeeId: e.target.value })} className={inputClass}><option value="">Not assigned</option>{supervisors.filter((s) => s.id !== editor.id).map((s) => <option key={s.id} value={s.id}>{s.employee_code} — {s.first_name} {s.surname}</option>)}</select></EditorField>
+            </div>
+
+            <div className="border-t border-slate-200 p-5">
+              <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">Skills / qualifications</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {options.skills.map((skill) => {
+                  const checked = editor.skillCodes.includes(skill.code);
+                  return <label key={skill.code} className={`flex cursor-pointer items-start gap-3 border p-3 ${checked ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-white"}`}><input type="checkbox" checked={checked} onChange={(e) => onChange({ ...editor, skillCodes: e.target.checked ? [...editor.skillCodes, skill.code] : editor.skillCodes.filter((code) => code !== skill.code) })}/><span><span className="block text-sm font-black">{skill.name}</span><span className="font-mono text-[10px] font-bold text-slate-500">{skill.code}</span></span></label>;
+                })}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-slate-300 bg-slate-50 p-5">
+              <button onClick={onClose} className="border border-slate-300 bg-white px-5 py-3 text-sm font-black uppercase">Cancel</button>
+              <button disabled={busy || !editor.employeeCode || !editor.firstName || !editor.surname} onClick={onSave} className="inline-flex items-center gap-2 bg-blue-600 px-5 py-3 text-sm font-black uppercase text-white hover:bg-blue-500 disabled:opacity-50">{busy ? <LoaderCircle className="animate-spin" size={17}/> : <Check size={17}/>} Save employee</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function EditorField({ label, children }: { label: string; children: ReactNode }) {
+  return <label><span className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-500">{label}</span>{children}</label>;
+}
 
 function AttendanceBoard({
   title,
