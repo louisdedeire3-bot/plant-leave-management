@@ -405,8 +405,8 @@ export function LeaveManagementApp() {
           supabase.rpc("portal_factory_mode", { p_token: token }),
           supabase.rpc("portal_absences", {
             p_token: token,
-            p_date_from: isoDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
-            p_date_to: isoDate(new Date(new Date().getFullYear(), new Date().getMonth() + 2, 0)),
+            p_date_from: isoDate(new Date(new Date().getFullYear() - 1, 0, 1)),
+            p_date_to: isoDate(new Date(new Date().getFullYear() + 1, 11, 31)),
           }),
         ]);
         if (employeeResult.error) throw employeeResult.error;
@@ -818,6 +818,7 @@ export function LeaveManagementApp() {
               language={language}
               employees={employees}
               requests={requests}
+              absences={absences}
               department={department}
               setDepartment={setDepartment}
               anchor={calendarAnchor}
@@ -1126,7 +1127,7 @@ function EmployeeView(props: EmployeeViewProps) {
   );
 }
 
-function CalendarView({ t, language, employees, requests, department, setDepartment, anchor, setAnchor }: { t: (typeof copy)[Language]; language: Language; employees: Employee[]; requests: LeaveRequest[]; department: string; setDepartment: (value: string) => void; anchor: string; setAnchor: (value: string) => void }) {
+function CalendarView({ t, language, employees, requests, absences, department, setDepartment, anchor, setAnchor }: { t: (typeof copy)[Language]; language: Language; employees: Employee[]; requests: LeaveWithManpower[]; absences: AbsenceRow[]; department: string; setDepartment: (value: string) => void; anchor: string; setAnchor: (value: string) => void }) {
   const [scale, setScale] = useState<CalendarScale>("week");
   const a = authCopy[language];
   const departments = useMemo(() => Array.from(new Set(employees.map((employee) => employee.department))).sort(), [employees]);
@@ -1148,8 +1149,46 @@ function CalendarView({ t, language, employees, requests, department, setDepartm
     return groups;
   }, {});
   const departmentEntries = Object.entries(groupedEmployees).sort(([left], [right]) => left.localeCompare(right));
-  const approvedCount = visibleEmployees.filter((employee) => rangeDates.some((date) => requestStatusOnDate(employee.id, isoDate(date), requests) === "approved")).length;
-  const pendingCount = visibleEmployees.filter((employee) => rangeDates.some((date) => { const status = requestStatusOnDate(employee.id, isoDate(date), requests); return status === "pending_supervisor" || status === "pending_manager"; })).length;
+  function absenceOnDate(employeeId: string, date: string) {
+    return absences.find((absence) => absence.employee_id === employeeId && absence.absence_date === date) ?? null;
+  }
+
+  function leaveOnDate(employeeId: string, date: string) {
+    return requests.find((request) => request.employeeId === employeeId && date >= request.startDate && date <= request.endDate) ?? null;
+  }
+
+  function calendarState(employeeId: string, date: string) {
+    const absence = absenceOnDate(employeeId, date);
+    if (absence) {
+      const code: Record<AbsenceClassification, string> = {
+        UNJUSTIFIED: "UA",
+        SICK: "SL",
+        ANNUAL: "AL",
+        COMPASSIONATE: "CL",
+      };
+      return { kind: "absence" as const, code: code[absence.classification], classification: absence.classification };
+    }
+
+    const leave = leaveOnDate(employeeId, date);
+    if (!leave) return { kind: "working" as const, code: "W" };
+
+    if (leave.status === "approved") {
+      return { kind: "approved_leave" as const, code: leave.leaveType === "COMPASSIONATE" ? "CL" : "AL" };
+    }
+    if (leave.status === "pending_supervisor") return { kind: "pending_supervisor" as const, code: "PS" };
+    if (leave.status === "pending_manager") return { kind: "pending_manager" as const, code: "PM" };
+    return { kind: "working" as const, code: "W" };
+  }
+
+  const approvedCount = visibleEmployees.filter((employee) => rangeDates.some((date) => {
+    const state = calendarState(employee.id, isoDate(date));
+    return state.kind === "approved_leave";
+  })).length;
+  const absentCount = visibleEmployees.filter((employee) => rangeDates.some((date) => calendarState(employee.id, isoDate(date)).kind === "absence")).length;
+  const pendingCount = visibleEmployees.filter((employee) => rangeDates.some((date) => {
+    const state = calendarState(employee.id, isoDate(date));
+    return state.kind === "pending_supervisor" || state.kind === "pending_manager";
+  })).length;
   const cellWidth = scale === "day" ? 280 : scale === "week" ? 118 : 54;
   const minWidth = 300 + rangeDates.length * cellWidth;
 
@@ -1167,13 +1206,21 @@ function CalendarView({ t, language, employees, requests, department, setDepartm
     return new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric" }).format(anchorDate);
   }
 
-  function statusCellClass(status: keyof typeof statusCode) {
+  function calendarCellClass(state: ReturnType<typeof calendarState>) {
+    if (state.kind === "absence") {
+      return {
+        UNJUSTIFIED: "border-red-500 bg-red-600 text-white",
+        SICK: "border-violet-500 bg-violet-600 text-white",
+        ANNUAL: "border-blue-500 bg-blue-600 text-white",
+        COMPASSIONATE: "border-amber-500 bg-amber-400 text-amber-950",
+      }[state.classification];
+    }
     return {
       working: "border-emerald-300 bg-emerald-100 text-emerald-900",
-      approved: "border-blue-400 bg-blue-600 text-white",
+      approved_leave: "border-blue-400 bg-blue-600 text-white",
       pending_supervisor: "border-amber-400 bg-amber-300 text-amber-950",
       pending_manager: "border-violet-400 bg-violet-600 text-white",
-    }[status];
+    }[state.kind];
   }
 
   return (
@@ -1198,10 +1245,11 @@ function CalendarView({ t, language, employees, requests, department, setDepartm
             <button onClick={() => shift(1)} className="grid h-11 w-11 place-items-center border border-slate-600 bg-slate-900 hover:bg-slate-800"><ChevronRight size={18} /></button>
           </div>
         </div>
-        <div className="grid grid-cols-2 border-t border-slate-700 sm:grid-cols-4">
+        <div className="grid grid-cols-2 border-t border-slate-700 sm:grid-cols-5">
           <BoardStat label="Employees shown" value={visibleEmployees.length} />
           <BoardStat label="Departments" value={departmentEntries.length} />
           <BoardStat label="Approved leave" value={approvedCount} accent="text-sky-400" />
+          <BoardStat label="Absences" value={absentCount} accent="text-red-400" />
           <BoardStat label="Pending" value={pendingCount} accent="text-amber-400" last />
         </div>
       </section>
@@ -1209,7 +1257,10 @@ function CalendarView({ t, language, employees, requests, department, setDepartm
       <section className="border border-slate-400 bg-white shadow-xl">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-slate-300 bg-slate-200 px-4 py-3 font-mono text-[11px] font-black uppercase tracking-[0.12em] text-slate-700">
           <LegendBox className="border-emerald-300 bg-emerald-100" label="W — Working" />
-          <LegendBox className="border-blue-400 bg-blue-600" label="AL — Approved leave" />
+          <LegendBox className="border-blue-400 bg-blue-600" label="AL — Annual Leave" />
+          <LegendBox className="border-violet-500 bg-violet-600" label="SL — Sick Leave" />
+          <LegendBox className="border-amber-500 bg-amber-400" label="CL — Compassionate Leave" />
+          <LegendBox className="border-red-500 bg-red-600" label="UA — Unjustified Absence" />
           <LegendBox className="border-amber-400 bg-amber-300" label="PS — Pending supervisor" />
           <LegendBox className="border-violet-400 bg-violet-600" label="PM — Pending manager" />
           <LegendBox className="border-slate-500 bg-slate-700" label="OFF — Sunday" />
@@ -1220,7 +1271,7 @@ function CalendarView({ t, language, employees, requests, department, setDepartm
               <tr className="bg-slate-900 text-white">
                 <th className="sticky left-0 z-40 min-w-[300px] border-r border-slate-600 bg-slate-900 px-4 py-3 text-left font-mono text-xs font-black uppercase tracking-[0.12em]">Employee / Department</th>
                 {rangeDates.map((date) => {
-                  const away = visibleEmployees.filter((employee) => requestStatusOnDate(employee.id, isoDate(date), requests) !== "working").length;
+                  const away = visibleEmployees.filter((employee) => calendarState(employee.id, isoDate(date)).kind !== "working").length;
                   const saturday = date.getDay() === 6;
                   const sunday = date.getDay() === 0;
                   return <th key={isoDate(date)} style={{ minWidth: cellWidth }} className={`border-r border-slate-700 px-1 py-2 text-center ${saturday ? "bg-amber-950" : sunday ? "bg-slate-800" : ""}`}><p className="font-mono text-[10px] font-black uppercase text-slate-400">{new Intl.DateTimeFormat("en-GB", { weekday: scale === "month" ? "narrow" : "short" }).format(date)}</p><p className={`${scale === "month" ? "text-base" : "text-xl"} mt-0.5 font-black`}>{new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: scale === "month" ? undefined : "short" }).format(date)}</p><p className="mt-0.5 font-mono text-[9px] font-black uppercase text-amber-400">{away} away</p></th>;
@@ -1236,8 +1287,8 @@ function CalendarView({ t, language, employees, requests, department, setDepartm
                       <td className="sticky left-0 z-10 border-b border-r border-slate-300 bg-inherit px-4 py-2"><div className="flex items-center gap-3"><span className="grid h-9 w-9 shrink-0 place-items-center border border-slate-500 bg-slate-800 font-mono text-xs font-black text-white">{initials(employee)}</span><div className="min-w-0"><p className="truncate font-black uppercase text-slate-950">{employeeName(employee)}</p><p className="font-mono text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">{employee.employeeCode}</p><p className="max-w-[230px] truncate text-[11px] font-semibold text-slate-600">{employee.positionTitle}</p></div></div></td>
                       {rangeDates.map((date) => {
                         if (date.getDay() === 0) return <td key={isoDate(date)} className="border-b border-r border-slate-300 bg-slate-200 p-1 text-center"><span className={`grid w-full place-items-center border border-slate-500 bg-slate-700 font-mono text-[10px] font-black text-white ${scale === "month" ? "h-8" : "h-12"}`}>OFF</span></td>;
-                        const status = requestStatusOnDate(employee.id, isoDate(date), requests);
-                        return <td key={isoDate(date)} className={`border-b border-r border-slate-300 p-1 text-center ${date.getDay() === 6 ? "bg-amber-50" : ""}`}><span className={`grid w-full place-items-center border-2 font-mono font-black tracking-[0.06em] ${scale === "month" ? "h-8 text-[10px]" : "h-12 text-sm"} ${statusCellClass(status)}`}>{statusCode[status]}</span></td>;
+                        const state = calendarState(employee.id, isoDate(date));
+                        return <td key={isoDate(date)} className={`border-b border-r border-slate-300 p-1 text-center ${date.getDay() === 6 ? "bg-amber-50" : ""}`}><span title={state.kind === "absence" ? state.classification.replace("_", " ") : undefined} className={`grid w-full place-items-center border-2 font-mono font-black tracking-[0.06em] ${scale === "month" ? "h-8 text-[10px]" : "h-12 text-sm"} ${calendarCellClass(state)}`}>{state.code}</span></td>;
                       })}
                     </tr>
                   ))}
