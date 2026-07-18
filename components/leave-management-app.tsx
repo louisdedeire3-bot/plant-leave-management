@@ -847,39 +847,39 @@ export function LeaveManagementApp() {
   const viewOptions = viewOptionsFor(profile);
 
   return (
-    <div className="min-h-screen">
-      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl">
+    <div className="min-h-screen bg-[#f3f0eb]">
+      <header className="sticky top-0 z-40 border-b border-[#ded5ca] bg-[#faf8f4]/95 backdrop-blur-xl">
         <div className="mx-auto flex min-h-20 max-w-[1680px] items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
           <button className="flex items-center gap-3 text-left" onClick={() => setView(viewOptions[0].id)}>
-            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-blue-700 to-sky-500 text-white shadow-lg shadow-blue-500/25">
+            <span className="grid h-11 w-11 place-items-center rounded-2xl border border-[#4a382a] bg-[#171310] text-[#e6a45c] shadow-lg shadow-black/10">
               <Factory size={23} />
             </span>
             <span>
-              <span className="block text-[15px] font-black tracking-tight text-slate-950 sm:text-lg">Plant Leave Management</span>
-              <span className="hidden text-xs text-slate-500 sm:block">Secure leave & overtime portal</span>
+              <span className="block text-[15px] font-black tracking-tight text-[#1a1512] sm:text-lg">Green Charcoal · Workforce</span>
+              <span className="hidden text-xs text-[#786d63] sm:block">Leave, attendance & overtime control</span>
             </span>
           </button>
 
           <div className="flex items-center gap-2">
-            <div className="hidden rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-right sm:block">
+            <div className="hidden rounded-xl border border-[#ded5ca] bg-[#f4efe8] px-3 py-2 text-right sm:block">
               <p className="text-sm font-black text-slate-950">{profile.displayName}</p>
-              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-blue-600">{profile.role} · {profile.loginId}</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#b87333]">{profile.role} · {profile.loginId}</p>
             </div>
             <button
               onClick={() => sessionToken && void loadData(sessionToken)}
-              className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:text-blue-600"
+              className="grid h-10 w-10 place-items-center rounded-xl border border-[#ded5ca] bg-white text-slate-500 transition hover:border-[#d99a55] hover:text-[#b87333]"
               title={t.refresh}
             >
               <RefreshCw size={17} />
             </button>
-            <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600">
+            <label className="flex items-center gap-2 rounded-xl border border-[#ded5ca] bg-white px-3 py-2 text-sm font-semibold text-slate-600">
               <Languages size={16} />
               <select className="bg-transparent outline-none" value={language} onChange={(event) => setLanguage(event.target.value as Language)}>
                 <option value="en">English</option>
                 <option value="oshi">Oshiwambo</option>
               </select>
             </label>
-            <button onClick={() => void logout()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-950 px-3 text-sm font-black text-white hover:bg-red-700">
+            <button onClick={() => void logout()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#171310] px-3 text-sm font-black text-white transition hover:bg-red-700">
               <LogOut size={16} /><span className="hidden sm:inline">{a.logout}</span>
             </button>
           </div>
@@ -887,7 +887,7 @@ export function LeaveManagementApp() {
       </header>
 
       <div className="mx-auto grid max-w-[1680px] grid-cols-1 gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[240px_minmax(0,1fr)] lg:px-8">
-        <aside className="h-fit rounded-3xl border border-slate-800 bg-slate-950 p-3 text-white shadow-2xl lg:sticky lg:top-28">
+        <aside className="h-fit rounded-3xl border border-[#3a2e27] bg-[#171310] p-3 text-white shadow-2xl shadow-black/10 lg:sticky lg:top-28">
           <div className="mb-3 px-3 pb-3 pt-2">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Workspace</p>
           </div>
@@ -897,7 +897,7 @@ export function LeaveManagementApp() {
                 key={id}
                 onClick={() => setView(id)}
                 className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-bold transition ${
-                  view === id ? "bg-blue-600 text-white shadow-lg shadow-blue-900/30" : "text-slate-300 hover:bg-white/10 hover:text-white"
+                  view === id ? "bg-[#d99a55] text-[#171310] shadow-lg shadow-black/20" : "text-[#c9bfb5] hover:bg-[#2b211b] hover:text-white"
                 }`}
               >
                 <Icon size={18} />
@@ -905,7 +905,7 @@ export function LeaveManagementApp() {
               </button>
             ))}
           </nav>
-          <div className="mt-4 hidden rounded-2xl bg-white/5 p-4 lg:block">
+          <div className="mt-4 hidden rounded-2xl border border-[#332820] bg-[#201914] p-4 lg:block">
             <p className="text-xs font-semibold text-slate-400">Access scope</p>
             <p className="mt-1 text-sm font-black text-white">{profile.department}</p>
             <p className="mt-3 text-xs leading-5 text-slate-500">{a.autoLogout}</p>
@@ -913,7 +913,7 @@ export function LeaveManagementApp() {
         </aside>
 
         <main className="min-w-0">
-          {loading && <div className="mb-4 flex items-center gap-2 rounded-xl bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700"><LoaderCircle className="animate-spin" size={17} /> {t.loading}</div>}
+          {loading && <div className="mb-4 flex items-center gap-2 rounded-xl border border-[#ecd0ac] bg-[#fff7ec] px-4 py-3 text-sm font-bold text-[#9a5f27]"><LoaderCircle className="animate-spin" size={17} /> {t.loading}</div>}
           {databaseError && <InlineError text={databaseError} />}
           {message && <div className={`mb-4 rounded-xl px-4 py-3 text-sm font-bold ${message.kind === "success" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{message.text}</div>}
 
@@ -1004,10 +1004,10 @@ export function LeaveManagementApp() {
 
           {view === "manager" && profile.role === "manager" && (
             <div className="space-y-6">
-              <section className="border border-slate-700 bg-slate-950 p-5 text-white shadow-xl">
+              <section className="border border-[#3a2e27] bg-[#171310] p-5 text-white shadow-xl shadow-black/10">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div><p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">Factory mode</p><h2 className="mt-1 text-2xl font-black">{factoryMode?.low_season_mode !== false ? "LOW SEASON" : "HIGH SEASON"}</h2><p className="mt-1 text-sm text-slate-400">{factoryMode?.low_season_mode !== false ? "1 shift · Production 3 lines · Loading 1 container" : "2 shifts · Production 4 lines · Loading 2 containers"}</p></div>
-                  <label className="flex items-center gap-3 border border-slate-700 bg-slate-900 px-4 py-3"><span className="text-sm font-black">LOW SEASON MODE</span><input type="checkbox" checked={factoryMode?.low_season_mode !== false} onChange={(e) => void toggleLowSeason(e.target.checked)} className="h-5 w-5" /></label>
+                  <label className="flex items-center gap-3 border border-[#4a382a] bg-[#211914] px-4 py-3"><span className="text-sm font-black">LOW SEASON MODE</span><input type="checkbox" checked={factoryMode?.low_season_mode !== false} onChange={(e) => void toggleLowSeason(e.target.checked)} className="h-5 w-5" /></label>
                 </div>
               </section>
               <ManagerOvertimeDashboard
@@ -1085,9 +1085,9 @@ function LoginScreen({ language, setLanguage, login, loading }: { language: Lang
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 p-4 sm:p-8">
+    <div className="min-h-screen bg-[#0f0c0a] p-4 sm:p-8">
       <div className="mx-auto flex max-w-6xl justify-end pb-4">
-        <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-bold text-slate-200">
+        <label className="flex items-center gap-2 rounded-xl border border-[#4a382a] bg-[#171310] px-3 py-2 text-sm font-bold text-[#e9dfd4]">
           <Languages size={16} />
           <select className="bg-transparent outline-none" value={language} onChange={(event) => setLanguage(event.target.value as Language)}>
             <option value="en">English</option>
@@ -1095,16 +1095,16 @@ function LoginScreen({ language, setLanguage, login, loading }: { language: Lang
           </select>
         </label>
       </div>
-      <div className="mx-auto grid min-h-[760px] max-w-6xl overflow-hidden border border-slate-700 bg-white shadow-2xl lg:grid-cols-[1fr_0.9fr]">
-        <section className="relative overflow-hidden bg-gradient-to-br from-blue-800 via-blue-700 to-sky-500 p-8 text-white sm:p-12">
-          <div className="absolute -right-28 -top-28 h-80 w-80 rounded-full border border-white/15" />
+      <div className="mx-auto grid min-h-[760px] max-w-6xl overflow-hidden border border-[#4a382a] bg-[#f8f4ed] shadow-2xl lg:grid-cols-[1fr_0.9fr]">
+        <section className="relative overflow-hidden bg-gradient-to-br from-[#171310] via-[#25180f] to-[#0f0c0a] p-8 text-white sm:p-12">
+          <div className="absolute -right-28 -top-28 h-80 w-80 rounded-full border border-[#d99a55]/25" />
           <div className="relative flex h-full flex-col justify-between">
             <div>
               <span className="inline-flex items-center gap-2 border border-white/20 bg-white/10 px-3 py-2 font-mono text-xs font-black uppercase tracking-[0.18em]">
                 <Factory size={15} /> Plant workforce system
               </span>
               <h1 className="mt-10 max-w-xl text-4xl font-black uppercase tracking-tight sm:text-6xl">Leave & overtime control</h1>
-              <p className="mt-5 max-w-lg text-lg leading-8 text-blue-100">{a.confidential}</p>
+              <p className="mt-5 max-w-lg text-lg leading-8 text-[#cdbfb2]">{a.confidential}</p>
             </div>
             <div className="mt-12 grid gap-3 sm:grid-cols-2">
               <InfoTile value="5 CHAR" label="individual confidential access code" />
@@ -1113,10 +1113,10 @@ function LoginScreen({ language, setLanguage, login, loading }: { language: Lang
           </div>
         </section>
 
-        <section className="flex items-center p-6 sm:p-10 lg:p-12">
+        <section className="flex items-center bg-[#f8f4ed] p-6 sm:p-10 lg:p-12">
           <form onSubmit={submit} className="mx-auto w-full max-w-md">
-            <span className="grid h-14 w-14 place-items-center rounded-2xl bg-slate-950 text-white"><LockKeyhole size={26} /></span>
-            <p className="mt-7 font-mono text-xs font-black uppercase tracking-[0.2em] text-blue-600">{a.securePortal}</p>
+            <span className="grid h-14 w-14 place-items-center rounded-2xl border border-[#4a382a] bg-[#171310] text-[#e6a45c]"><LockKeyhole size={26} /></span>
+            <p className="mt-7 font-mono text-xs font-black uppercase tracking-[0.2em] text-[#b87333]">{a.securePortal}</p>
             <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">{a.loginTitle}</h2>
             <p className="mt-3 leading-7 text-slate-500">{a.loginText}</p>
 
@@ -1153,7 +1153,7 @@ function LoginScreen({ language, setLanguage, login, loading }: { language: Lang
             </div>
 
             {error && <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">{error}</div>}
-            <button disabled={loading} type="submit" className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-4 font-black text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 disabled:opacity-60">
+            <button disabled={loading} type="submit" className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#d99a55] px-5 py-4 font-black text-[#171310] shadow-lg shadow-[#d99a55]/20 transition hover:bg-[#c88843] disabled:opacity-60">
               {loading ? <LoaderCircle className="animate-spin" size={19} /> : <KeyRound size={19} />} {a.signIn}
             </button>
           </form>
@@ -1201,10 +1201,10 @@ function EmployeeView(props: EmployeeViewProps) {
   return (
     <div className="space-y-6">
       <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-soft">
-        <div className="flex items-center gap-4 border-b border-slate-100 bg-gradient-to-r from-white to-blue-50/60 p-6 sm:p-8">
+        <div className="flex items-center gap-4 border-b border-[#e6ddd3] bg-gradient-to-r from-white to-[#fbf2e7] p-6 sm:p-8">
           <span className="grid h-16 w-16 place-items-center rounded-3xl bg-slate-950 text-lg font-black text-white">{initials(employee)}</span>
           <div>
-            <p className="text-sm font-bold text-blue-600">{employee.employeeCode} · {employee.department}</p>
+            <p className="text-sm font-bold text-[#b87333]">{employee.employeeCode} · {employee.department}</p>
             <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">{employeeName(employee)}</h1>
             <p className="mt-1 text-sm font-semibold text-slate-700">{employee.positionTitle}</p>
             <p className="mt-1 text-sm text-slate-500">Supervisor: {employee.supervisor}</p>
@@ -1233,7 +1233,7 @@ function EmployeeView(props: EmployeeViewProps) {
                 <Field label={t.endDate}><input required type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className={inputClass} /></Field>
               </div>
               <Field label={t.comment}><textarea rows={4} value={comment} onChange={(event) => setComment(event.target.value)} placeholder={t.commentPlaceholder} className={`${inputClass} resize-none`} /></Field>
-              <div className="grid gap-3 rounded-3xl border border-blue-100 bg-blue-50/70 p-4 sm:grid-cols-2">
+              <div className="grid gap-3 rounded-3xl border border-[#ecd3b5] bg-[#fff8ef] p-4 sm:grid-cols-2">
                 <CalculationTile label={t.requestedDays} value={`${requestedDays} ${t.days}`} />
                 <CalculationTile label={t.balanceAfter} value={`${balanceAfter} ${t.days}`} danger={balanceAfter < 0} />
               </div>
@@ -1395,11 +1395,11 @@ function CalendarView({ t, language, employees, requests, absences, department, 
 
   return (
     <div className="space-y-2">
-      <section className="overflow-hidden border border-slate-700 bg-slate-950 text-white shadow-xl">
+      <section className="overflow-hidden border border-[#3a2e27] bg-[#171310] text-white shadow-xl">
         <div className="grid xl:grid-cols-[1fr_auto]">
           <div className="border-b border-slate-700 px-4 py-3 xl:border-b-0 xl:border-r">
             <div className="flex items-center gap-3">
-              <span className="grid h-9 w-9 place-items-center border border-slate-600 bg-slate-900 text-amber-400"><Factory size={18} /></span>
+              <span className="grid h-9 w-9 place-items-center border border-[#4a382a] bg-[#211914] text-[#e6a45c]"><Factory size={18} /></span>
               <div><p className="font-mono text-[10px] font-black uppercase tracking-[0.2em] text-amber-400">Factory manpower board</p><h1 className="text-xl font-black uppercase tracking-tight">{title()}</h1></div>
             </div>
           </div>
@@ -1558,7 +1558,7 @@ function ManagerOvertimeDashboard({
 
   return (
     <section className="overflow-hidden border border-slate-300 bg-white shadow-xl">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-300 bg-slate-950 px-5 py-4 text-white">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#4a382a] bg-[#171310] px-5 py-4 text-white">
         <div>
           <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">Overtime control</p>
           <h2 className="mt-1 text-2xl font-black uppercase">Manager overtime dashboard</h2>
@@ -1601,7 +1601,7 @@ function ManagerOvertimeDashboard({
                   </div>
                   <div className="h-2 overflow-hidden bg-slate-100">
                     <div
-                      className="h-full bg-slate-800"
+                      className="h-full bg-[#d99a55]"
                       style={{ width: `${Math.max(3, (row.hours / maxReasonHours) * 100)}%` }}
                     />
                   </div>
@@ -1914,7 +1914,7 @@ function AttendanceBoard({
 }
 
 function ApprovalDashboard({ eyebrow, title, stats, employees, leaveRequests, overtimeRequests, language, t, savingRequestId, onLeaveDecision, onOvertimeDecision, onReassess, showManpower = false }: ApprovalDashboardProps) {
-  return <div className="space-y-6"><section className="border border-slate-700 bg-slate-950 p-6 text-white shadow-2xl sm:p-8"><SectionHeaderDark eyebrow={eyebrow} title={title} icon={LayoutDashboard} /><div className="mt-7 grid gap-px bg-slate-700 sm:grid-cols-2 xl:grid-cols-4">{stats.map(({ label, value, icon: Icon }) => <article key={label} className="bg-slate-900 p-5"><div className="flex items-center justify-between"><span className="grid h-10 w-10 place-items-center border border-slate-700 bg-slate-950 text-amber-400"><Icon size={19} /></span><span className="text-3xl font-black">{value}</span></div><p className="mt-5 font-mono text-xs font-black uppercase tracking-[0.12em] text-slate-400">{label}</p></article>)}</div></section><RequestTable title={t.annualLeaveTab} employees={employees} requests={leaveRequests} language={language} t={t} savingRequestId={savingRequestId} onDecision={onLeaveDecision} onReassess={onReassess} showManpower={showManpower} /><OvertimeTable title={t.overtimeTab} employees={employees} requests={overtimeRequests} language={language} t={t} savingRequestId={savingRequestId} onDecision={onOvertimeDecision} /></div>;
+  return <div className="space-y-6"><section className="border border-[#3a2e27] bg-[#171310] p-6 text-white shadow-2xl shadow-black/10 sm:p-8"><SectionHeaderDark eyebrow={eyebrow} title={title} icon={LayoutDashboard} /><div className="mt-7 grid gap-px bg-slate-700 sm:grid-cols-2 xl:grid-cols-4">{stats.map(({ label, value, icon: Icon }) => <article key={label} className="bg-[#211914] p-5"><div className="flex items-center justify-between"><span className="grid h-10 w-10 place-items-center border border-slate-700 bg-slate-950 text-amber-400"><Icon size={19} /></span><span className="text-3xl font-black">{value}</span></div><p className="mt-5 font-mono text-xs font-black uppercase tracking-[0.12em] text-slate-400">{label}</p></article>)}</div></section><RequestTable title={t.annualLeaveTab} employees={employees} requests={leaveRequests} language={language} t={t} savingRequestId={savingRequestId} onDecision={onLeaveDecision} onReassess={onReassess} showManpower={showManpower} /><OvertimeTable title={t.overtimeTab} employees={employees} requests={overtimeRequests} language={language} t={t} savingRequestId={savingRequestId} onDecision={onOvertimeDecision} /></div>;
 }
 
 function RequestTable({ title, employees, requests, language, t, savingRequestId, onDecision, onReassess, showManpower }: { title: string; employees: Employee[]; requests: LeaveWithManpower[]; language: Language; t: (typeof copy)[Language]; savingRequestId: string | null; onDecision: (id: string, decision: Decision) => void; onReassess: (id: string) => void; showManpower: boolean }) {
@@ -1928,7 +1928,7 @@ function RequestTable({ title, employees, requests, language, t, savingRequestId
   return (
     <section className="overflow-hidden border border-slate-400 bg-white shadow-xl">
       <div className="border-b border-slate-300 bg-slate-200 p-5">
-        <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-blue-700">{t.pendingRequests}</p>
+        <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-[#b87333]">{t.pendingRequests}</p>
         <h2 className="mt-1 text-2xl font-black uppercase text-slate-950">{title}</h2>
       </div>
 
@@ -2017,19 +2017,19 @@ function OvertimeTable({ title, employees, requests, language, t, savingRequestI
   return <section className="overflow-hidden border border-slate-400 bg-white shadow-xl"><div className="border-b border-slate-300 bg-slate-200 p-5"><p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-blue-700">{t.pendingRequests}</p><h2 className="mt-1 text-2xl font-black uppercase text-slate-950">{title}</h2></div>{requests.length === 0 ? <div className="p-8"><EmptyState text={t.noPending} /></div> : <div className="overflow-x-auto"><table className="w-full min-w-[1100px] border-collapse"><thead><tr className="bg-slate-900 text-left font-mono text-xs font-black uppercase tracking-[0.12em] text-slate-300"><th className="px-5 py-4">{t.employee}</th><th className="px-5 py-4">{t.department}</th><th className="px-5 py-4">{t.overtimeDate}</th><th className="px-5 py-4">{t.period}</th><th className="px-5 py-4">{t.hours}</th><th className="px-5 py-4">{t.status}</th><th className="px-5 py-4">{a.actions}</th></tr></thead><tbody>{requests.map((request) => { const employee = employees.find((item) => item.id === request.employeeId); if (!employee) return null; return <tr key={request.id} className="border-t border-slate-200 hover:bg-slate-50"><td className="px-5 py-4"><EmployeeCell employee={employee} /></td><td className="px-5 py-4 font-semibold text-slate-600">{employee.department}</td><td className="px-5 py-4 font-semibold text-slate-600">{formatDate(request.overtimeDate)}</td><td className="px-5 py-4 font-semibold text-slate-600">{request.startTime} → {request.endTime}</td><td className="px-5 py-4 font-black">{request.totalHours}</td><td className="px-5 py-4"><StatusBadge status={request.status} language={language} /></td><td className="px-5 py-4"><DecisionButtons busy={savingRequestId === request.id} approve={() => onDecision(request.id, "approve")} reject={() => onDecision(request.id, "reject")} language={language} /></td></tr>; })}</tbody></table></div>}</section>;
 }
 
-const inputClass = "w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 font-semibold text-slate-900 transition focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-100";
+const inputClass = "w-full rounded-2xl border border-[#ddd4ca] bg-[#faf8f4] px-4 py-3.5 font-semibold text-slate-900 transition focus:border-[#d99a55] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#f4dfc4]";
 
 function LoadingScreen({ text }: { text: string }) { return <div className="grid min-h-screen place-items-center bg-slate-950"><div className="text-center"><LoaderCircle className="mx-auto animate-spin text-amber-400" size={42} /><p className="mt-4 font-mono font-black uppercase tracking-[0.14em] text-slate-300">{text}</p></div></div>; }
 function InlineError({ text }: { text: string }) { return <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 font-mono text-sm font-bold text-red-700">{text}</div>; }
-function SectionHeader({ eyebrow, title, icon: Icon }: { eyebrow: string; title: string; icon: LucideIcon }) { return <div className="flex items-center gap-4"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-50 text-blue-600 ring-1 ring-blue-100"><Icon size={22} /></span><div><p className="text-xs font-black uppercase tracking-[0.16em] text-blue-600">{eyebrow}</p><h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">{title}</h1></div></div>; }
+function SectionHeader({ eyebrow, title, icon: Icon }: { eyebrow: string; title: string; icon: LucideIcon }) { return <div className="flex items-center gap-4"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#fbf0e1] text-[#a96529] ring-1 ring-[#ecd3b5]"><Icon size={22} /></span><div><p className="text-xs font-black uppercase tracking-[0.16em] text-[#a96529]">{eyebrow}</p><h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">{title}</h1></div></div>; }
 function SectionHeaderDark({ eyebrow, title, icon: Icon }: { eyebrow: string; title: string; icon: LucideIcon }) { return <div className="flex items-center gap-4"><span className="grid h-12 w-12 place-items-center border border-slate-700 bg-slate-900 text-amber-400"><Icon size={22} /></span><div><p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">{eyebrow}</p><h1 className="mt-1 text-2xl font-black uppercase tracking-tight text-white sm:text-3xl">{title}</h1></div></div>; }
-function ModuleButton({ active, onClick, icon: Icon, children }: { active: boolean; onClick: () => void; icon: LucideIcon; children: React.ReactNode }) { return <button onClick={onClick} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-black transition ${active ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-50 hover:text-slate-950"}`}><Icon size={17} />{children}</button>; }
-function InfoTile({ value, label }: { value: string; label: string }) { return <div className="border border-white/20 bg-white/10 p-4 backdrop-blur"><p className="font-mono text-2xl font-black">{value}</p><p className="mt-1 text-xs leading-5 text-blue-100">{label}</p></div>; }
+function ModuleButton({ active, onClick, icon: Icon, children }: { active: boolean; onClick: () => void; icon: LucideIcon; children: React.ReactNode }) { return <button onClick={onClick} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-black transition ${active ? "bg-[#d99a55] text-[#171310]" : "text-slate-500 hover:bg-[#f7f1e9] hover:text-slate-950"}`}><Icon size={17} />{children}</button>; }
+function InfoTile({ value, label }: { value: string; label: string }) { return <div className="border border-[#d99a55]/25 bg-white/5 p-4 backdrop-blur"><p className="font-mono text-2xl font-black text-[#f0b66d]">{value}</p><p className="mt-1 text-xs leading-5 text-[#cdbfb2]">{label}</p></div>; }
 function StatStrip({ label, value, accent = "text-slate-950" }: { label: string; value: string; accent?: string }) { return <div className="bg-white p-5 sm:p-6"><p className="text-sm font-bold text-slate-500">{label}</p><p className={`mt-2 text-2xl font-black tracking-tight ${accent}`}>{value}</p></div>; }
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block"><span className="mb-2 block text-sm font-black text-slate-700">{label}</span>{children}</label>; }
-function CalculationTile({ label, value, danger = false }: { label: string; value: string; danger?: boolean }) { return <div className="rounded-2xl bg-white p-4 ring-1 ring-blue-100"><p className="text-sm font-bold text-slate-500">{label}</p><p className={`mt-2 text-2xl font-black ${danger ? "text-red-600" : "text-slate-950"}`}>{value}</p></div>; }
-function InfoNote({ text }: { text: string }) { return <div className="flex items-start gap-3 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600"><Clock3 className="mt-0.5 shrink-0 text-blue-600" size={18} /><p>{text}</p></div>; }
-function SubmitButton({ saving, label }: { saving: boolean; label: string }) { return <button disabled={saving} type="submit" className="inline-flex min-w-44 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3.5 font-black text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60">{saving && <LoaderCircle className="animate-spin" size={18} />}{label}</button>; }
+function CalculationTile({ label, value, danger = false }: { label: string; value: string; danger?: boolean }) { return <div className="rounded-2xl bg-white p-4 ring-1 ring-[#ecd3b5]"><p className="text-sm font-bold text-slate-500">{label}</p><p className={`mt-2 text-2xl font-black ${danger ? "text-red-600" : "text-slate-950"}`}>{value}</p></div>; }
+function InfoNote({ text }: { text: string }) { return <div className="flex items-start gap-3 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600"><Clock3 className="mt-0.5 shrink-0 text-[#b87333]" size={18} /><p>{text}</p></div>; }
+function SubmitButton({ saving, label }: { saving: boolean; label: string }) { return <button disabled={saving} type="submit" className="inline-flex min-w-44 items-center justify-center gap-2 rounded-2xl bg-[#d99a55] px-5 py-3.5 font-black text-[#171310] shadow-lg shadow-[#d99a55]/20 transition hover:bg-[#c88843] disabled:cursor-wait disabled:opacity-60">{saving && <LoaderCircle className="animate-spin" size={18} />}{label}</button>; }
 function HistoryCard({ title, icon, emptyText, children }: { title: string; icon: LucideIcon; emptyText: string; children: React.ReactNode }) { const items = Array.isArray(children) ? children.filter(Boolean) : children; const empty = Array.isArray(items) ? items.length === 0 : !items; return <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-soft sm:p-8"><SectionHeader eyebrow="History" title={title} icon={icon} /><div className="mt-7 space-y-3">{empty ? <EmptyState text={emptyText} /> : items}</div></section>; }
 function StatusBadge({ status, language }: { status: RequestStatus; language: Language }) { return <span className={`inline-flex rounded-full px-3 py-1.5 text-xs font-black ring-1 ${statusStyles[status]}`}>{statusLabel(status, language)}</span>; }
 function EmployeeCell({ employee }: { employee: Employee }) { return <div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center border border-slate-700 bg-slate-900 text-xs font-black text-white">{initials(employee)}</span><div><p className="font-black text-slate-950">{employeeName(employee)}</p><p className="font-mono text-xs text-slate-500">{employee.employeeCode}</p><p className="max-w-[260px] truncate text-xs font-semibold text-slate-600">{employee.positionTitle}</p></div></div>; }
