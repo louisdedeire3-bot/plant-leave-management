@@ -1341,8 +1341,9 @@ function CalendarView({ t, language, employees, requests, absences, department, 
     const state = calendarState(employee.id, isoDate(date));
     return state.kind === "pending_supervisor" || state.kind === "pending_manager";
   })).length;
-  const cellWidth = scale === "day" ? 280 : scale === "week" ? 118 : 54;
-  const minWidth = 300 + rangeDates.length * cellWidth;
+  const cellWidth = scale === "day" ? 220 : scale === "week" ? 82 : 34;
+  const employeeColumnWidth = 235;
+  const minWidth = employeeColumnWidth + rangeDates.length * cellWidth;
 
   function shift(offset: number) {
     const next = new Date(anchorDate);
@@ -1376,25 +1377,25 @@ function CalendarView({ t, language, employees, requests, absences, department, 
   }
 
   return (
-    <div className="space-y-4">
-      <section className="overflow-hidden border border-slate-700 bg-slate-950 text-white shadow-2xl">
+    <div className="space-y-2">
+      <section className="overflow-hidden border border-slate-700 bg-slate-950 text-white shadow-xl">
         <div className="grid xl:grid-cols-[1fr_auto]">
-          <div className="border-b border-slate-700 p-5 xl:border-b-0 xl:border-r">
-            <div className="flex items-start gap-4">
-              <span className="grid h-12 w-12 place-items-center border border-slate-600 bg-slate-900 text-amber-400"><Factory size={24} /></span>
-              <div><p className="font-mono text-xs font-black uppercase tracking-[0.24em] text-amber-400">Factory manpower board</p><h1 className="mt-1 text-2xl font-black uppercase tracking-tight sm:text-3xl">{title()}</h1><p className="mt-2 text-sm text-slate-400">Day / week / month operational planning</p></div>
+          <div className="border-b border-slate-700 px-4 py-3 xl:border-b-0 xl:border-r">
+            <div className="flex items-center gap-3">
+              <span className="grid h-9 w-9 place-items-center border border-slate-600 bg-slate-900 text-amber-400"><Factory size={18} /></span>
+              <div><p className="font-mono text-[10px] font-black uppercase tracking-[0.2em] text-amber-400">Factory manpower board</p><h1 className="text-xl font-black uppercase tracking-tight">{title()}</h1></div>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 p-4">
-            <select value={department} onChange={(event) => setDepartment(event.target.value)} className="h-11 border border-slate-600 bg-slate-900 px-3 text-sm font-black uppercase text-white outline-none">
+          <div className="flex flex-wrap items-center gap-2 p-3">
+            <select value={department} onChange={(event) => setDepartment(event.target.value)} className="h-9 border border-slate-600 bg-slate-900 px-2 text-xs font-black uppercase text-white outline-none">
               <option value="all">{t.allDepartments}</option>{departments.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
             <div className="flex border border-slate-600 bg-slate-900 p-1">
-              {(["day", "week", "month"] as CalendarScale[]).map((item) => <button key={item} onClick={() => setScale(item)} className={`px-3 py-2 font-mono text-xs font-black uppercase ${scale === item ? "bg-amber-400 text-slate-950" : "text-slate-300 hover:bg-slate-800"}`}>{a[item]}</button>)}
+              {(["day", "week", "month"] as CalendarScale[]).map((item) => <button key={item} onClick={() => setScale(item)} className={`px-3 py-1.5 font-mono text-[10px] font-black uppercase ${scale === item ? "bg-amber-400 text-slate-950" : "text-slate-300 hover:bg-slate-800"}`}>{a[item]}</button>)}
             </div>
-            <button onClick={() => shift(-1)} className="grid h-11 w-11 place-items-center border border-slate-600 bg-slate-900 hover:bg-slate-800"><ChevronLeft size={18} /></button>
-            <input type="date" value={anchor} onChange={(event) => setAnchor(event.target.value)} className="h-11 border border-slate-600 bg-slate-900 px-3 text-sm font-bold text-white outline-none" />
-            <button onClick={() => shift(1)} className="grid h-11 w-11 place-items-center border border-slate-600 bg-slate-900 hover:bg-slate-800"><ChevronRight size={18} /></button>
+            <button onClick={() => shift(-1)} className="grid h-9 w-9 place-items-center border border-slate-600 bg-slate-900 hover:bg-slate-800"><ChevronLeft size={18} /></button>
+            <input type="date" value={anchor} onChange={(event) => setAnchor(event.target.value)} className="h-9 border border-slate-600 bg-slate-900 px-2 text-xs font-bold text-white outline-none" />
+            <button onClick={() => shift(1)} className="grid h-9 w-9 place-items-center border border-slate-600 bg-slate-900 hover:bg-slate-800"><ChevronRight size={18} /></button>
           </div>
         </div>
         <div className="grid grid-cols-2 border-t border-slate-700 sm:grid-cols-5">
@@ -1407,7 +1408,7 @@ function CalendarView({ t, language, employees, requests, absences, department, 
       </section>
 
       <section className="border border-slate-400 bg-white shadow-xl">
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-slate-300 bg-slate-200 px-4 py-3 font-mono text-[11px] font-black uppercase tracking-[0.12em] text-slate-700">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-300 bg-slate-200 px-3 py-2 font-mono text-[9px] font-black uppercase tracking-[0.08em] text-slate-700">
           <LegendBox className="border-emerald-300 bg-emerald-100" label="W — Working" />
           <LegendBox className="border-blue-400 bg-blue-600" label="AL — Annual Leave" />
           <LegendBox className="border-violet-500 bg-violet-600" label="SL — Sick Leave" />
@@ -1417,30 +1418,30 @@ function CalendarView({ t, language, employees, requests, absences, department, 
           <LegendBox className="border-violet-400 bg-violet-600" label="PM — Pending manager" />
           <LegendBox className="border-slate-500 bg-slate-700" label="OFF — Sunday" />
         </div>
-        <div className="max-h-[72vh] overflow-auto">
-          <table className="border-collapse text-sm" style={{ minWidth, width: "100%" }}>
+        <div className="max-h-[78vh] overflow-auto">
+          <table className="border-collapse text-xs" style={{ minWidth, width: "100%" }}>
             <thead className="sticky top-0 z-30">
               <tr className="bg-slate-900 text-white">
-                <th className="sticky left-0 z-40 min-w-[300px] border-r border-slate-600 bg-slate-900 px-4 py-3 text-left font-mono text-xs font-black uppercase tracking-[0.12em]">Employee / Department</th>
+                <th style={{ minWidth: employeeColumnWidth, width: employeeColumnWidth }} className="sticky left-0 z-40 border-r border-slate-600 bg-slate-900 px-3 py-2 text-left font-mono text-[10px] font-black uppercase tracking-[0.1em]">Employee / Department</th>
                 {rangeDates.map((date) => {
                   const away = visibleEmployees.filter((employee) => calendarState(employee.id, isoDate(date)).kind !== "working").length;
                   const saturday = date.getDay() === 6;
                   const sunday = date.getDay() === 0;
-                  return <th key={isoDate(date)} style={{ minWidth: cellWidth }} className={`border-r border-slate-700 px-1 py-2 text-center ${saturday ? "bg-amber-950" : sunday ? "bg-slate-800" : ""}`}><p className="font-mono text-[10px] font-black uppercase text-slate-400">{new Intl.DateTimeFormat("en-GB", { weekday: scale === "month" ? "narrow" : "short" }).format(date)}</p><p className={`${scale === "month" ? "text-base" : "text-xl"} mt-0.5 font-black`}>{new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: scale === "month" ? undefined : "short" }).format(date)}</p><p className="mt-0.5 font-mono text-[9px] font-black uppercase text-amber-400">{away} away</p></th>;
+                  return <th key={isoDate(date)} style={{ minWidth: cellWidth }} className={`border-r border-slate-700 px-0.5 py-1 text-center ${saturday ? "bg-amber-950" : sunday ? "bg-slate-800" : ""}`}><p className="font-mono text-[8px] font-black uppercase text-slate-400">{new Intl.DateTimeFormat("en-GB", { weekday: scale === "month" ? "narrow" : "short" }).format(date)}</p><p className={`${scale === "month" ? "text-sm" : "text-base"} leading-none font-black`}>{new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: scale === "month" ? undefined : "short" }).format(date)}</p><p className="mt-0.5 font-mono text-[7px] font-black uppercase text-amber-400">{away} away</p></th>;
                 })}
               </tr>
             </thead>
             <tbody>
               {departmentEntries.map(([departmentName, departmentEmployees]) => (
                 <Fragment key={departmentName}>
-                  <tr className="bg-slate-300"><td colSpan={rangeDates.length + 1} className="border-y border-slate-500 px-4 py-2 font-mono text-xs font-black uppercase tracking-[0.16em] text-slate-900"><div className="flex items-center justify-between"><span>{departmentName}</span><span>{departmentEmployees.length} employees</span></div></td></tr>
+                  <tr className="bg-slate-300"><td colSpan={rangeDates.length + 1} className="border-y border-slate-500 px-3 py-1 font-mono text-[10px] font-black uppercase tracking-[0.12em] text-slate-900"><div className="flex items-center justify-between"><span>{departmentName}</span><span>{departmentEmployees.length} employees</span></div></td></tr>
                   {departmentEmployees.map((employee, employeeIndex) => (
                     <tr key={employee.id} className={employeeIndex % 2 === 0 ? "bg-white" : "bg-slate-50"}>
-                      <td className="sticky left-0 z-10 border-b border-r border-slate-300 bg-inherit px-4 py-2"><div className="flex items-center gap-3"><span className="grid h-9 w-9 shrink-0 place-items-center border border-slate-500 bg-slate-800 font-mono text-xs font-black text-white">{initials(employee)}</span><div className="min-w-0"><p className="truncate font-black uppercase text-slate-950">{employeeName(employee)}</p><p className="font-mono text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">{employee.employeeCode}</p><p className="max-w-[230px] truncate text-[11px] font-semibold text-slate-600">{employee.positionTitle}</p></div></div></td>
+                      <td style={{ minWidth: employeeColumnWidth, width: employeeColumnWidth }} className="sticky left-0 z-10 border-b border-r border-slate-300 bg-inherit px-2 py-1"><div className="flex items-center gap-2"><span className="grid h-7 w-7 shrink-0 place-items-center border border-slate-500 bg-slate-800 font-mono text-[9px] font-black text-white">{initials(employee)}</span><div className="min-w-0"><p className="truncate text-[11px] font-black uppercase leading-tight text-slate-950">{employeeName(employee)}</p><p className="max-w-[195px] truncate font-mono text-[9px] font-bold uppercase leading-tight text-slate-500">{employee.employeeCode} · {employee.positionTitle}</p></div></div></td>
                       {rangeDates.map((date) => {
-                        if (date.getDay() === 0) return <td key={isoDate(date)} className="border-b border-r border-slate-300 bg-slate-200 p-1 text-center"><span className={`grid w-full place-items-center border border-slate-500 bg-slate-700 font-mono text-[10px] font-black text-white ${scale === "month" ? "h-8" : "h-12"}`}>OFF</span></td>;
+                        if (date.getDay() === 0) return <td key={isoDate(date)} className="border-b border-r border-slate-300 bg-slate-200 p-0.5 text-center"><span className={`grid w-full place-items-center border border-slate-500 bg-slate-700 font-mono text-[10px] font-black text-white ${scale === "month" ? "h-6" : "h-8"}`}>OFF</span></td>;
                         const state = calendarState(employee.id, isoDate(date));
-                        return <td key={isoDate(date)} className={`border-b border-r border-slate-300 p-1 text-center ${date.getDay() === 6 ? "bg-amber-50" : ""}`}><span title={state.kind === "absence" ? state.classification.replace("_", " ") : undefined} className={`grid w-full place-items-center border-2 font-mono font-black tracking-[0.06em] ${scale === "month" ? "h-8 text-[10px]" : "h-12 text-sm"} ${calendarCellClass(state)}`}>{state.code}</span></td>;
+                        return <td key={isoDate(date)} className={`border-b border-r border-slate-300 p-0.5 text-center ${date.getDay() === 6 ? "bg-amber-50" : ""}`}><span title={state.kind === "absence" ? state.classification.replace("_", " ") : undefined} className={`grid w-full place-items-center border font-mono font-black tracking-[0.04em] ${scale === "month" ? "h-6 text-[8px]" : "h-8 text-[10px]"} ${calendarCellClass(state)}`}>{state.code}</span></td>;
                       })}
                     </tr>
                   ))}
@@ -1746,6 +1747,6 @@ function HistoryCard({ title, icon, emptyText, children }: { title: string; icon
 function StatusBadge({ status, language }: { status: RequestStatus; language: Language }) { return <span className={`inline-flex rounded-full px-3 py-1.5 text-xs font-black ring-1 ${statusStyles[status]}`}>{statusLabel(status, language)}</span>; }
 function EmployeeCell({ employee }: { employee: Employee }) { return <div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center border border-slate-700 bg-slate-900 text-xs font-black text-white">{initials(employee)}</span><div><p className="font-black text-slate-950">{employeeName(employee)}</p><p className="font-mono text-xs text-slate-500">{employee.employeeCode}</p><p className="max-w-[260px] truncate text-xs font-semibold text-slate-600">{employee.positionTitle}</p></div></div>; }
 function EmptyState({ text }: { text: string }) { return <div className="grid min-h-40 place-items-center border border-dashed border-slate-300 bg-slate-50 px-6 text-center"><div><span className="mx-auto grid h-12 w-12 place-items-center bg-white text-slate-400 shadow-sm"><Clock3 size={22} /></span><p className="mt-3 font-bold text-slate-500">{text}</p></div></div>; }
-function BoardStat({ label, value, accent = "text-white", last = false }: { label: string; value: number; accent?: string; last?: boolean }) { return <div className={`${last ? "" : "border-r"} border-slate-700 p-4`}><p className="font-mono text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p><p className={`mt-1 text-3xl font-black ${accent}`}>{value}</p></div>; }
-function LegendBox({ className, label }: { className: string; label: string }) { return <span className="flex items-center gap-2"><span className={`h-4 w-7 border ${className}`} />{label}</span>; }
+function BoardStat({ label, value, accent = "text-white", last = false }: { label: string; value: number; accent?: string; last?: boolean }) { return <div className={`${last ? "" : "border-r"} border-slate-700 px-3 py-2`}><p className="font-mono text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">{label}</p><p className={`text-xl font-black leading-tight ${accent}`}>{value}</p></div>; }
+function LegendBox({ className, label }: { className: string; label: string }) { return <span className="flex items-center gap-1.5"><span className={`h-3 w-5 border ${className}`} />{label}</span>; }
 function DecisionButtons({ busy, approve, reject, language }: { busy: boolean; approve: () => void; reject: () => void; language: Language }) { const a = authCopy[language]; return <div className="flex gap-2">{busy ? <span className="grid h-9 w-24 place-items-center border border-slate-300 bg-slate-100"><LoaderCircle className="animate-spin" size={17} /></span> : <><button onClick={approve} className="inline-flex h-9 items-center gap-1 border border-emerald-600 bg-emerald-600 px-3 text-xs font-black uppercase text-white hover:bg-emerald-700"><Check size={15} />{a.approve}</button><button onClick={reject} className="inline-flex h-9 items-center gap-1 border border-red-600 bg-white px-3 text-xs font-black uppercase text-red-700 hover:bg-red-50"><X size={15} />{a.reject}</button></>}</div>; }
