@@ -948,11 +948,14 @@ export function LeaveManagementApp() {
         if (employeeResult.error) throw employeeResult.error;
         if (leaveResult.error) throw leaveResult.error;
         if (overtimeResult.error) throw overtimeResult.error;
-        if (holidayResult.error) throw holidayResult.error;
         setEmployees(((employeeResult.data ?? []) as EmployeeRow[]).map(mapEmployee));
         setRequests(((leaveResult.data ?? []) as LeaveRow[]).map(mapLeave));
         setOvertimeRequests(((overtimeResult.data ?? []) as OvertimeRow[]).map(mapOvertime));
-        setPublicHolidays((holidayResult.data ?? []) as PublicHolidayRow[]);
+        setPublicHolidays(
+          holidayResult.error
+            ? []
+            : ((holidayResult.data ?? []) as PublicHolidayRow[]),
+        );
         if (!factoryResult.error) setFactoryMode((((factoryResult.data ?? []) as FactoryModeRow[])[0]) ?? null);
         if (!absenceResult.error) setAbsences((absenceResult.data ?? []) as AbsenceRow[]);
         if (!adminEmployeeResult.error) setManagedEmployees((adminEmployeeResult.data ?? []) as AdminEmployeeRow[]);
