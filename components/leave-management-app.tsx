@@ -1849,6 +1849,47 @@ function AttendanceBoard({
   const todayAbsences = absences.filter((item) => item.absence_date === today);
   const todayLeave = requests.filter((request) => request.status === "approved" && today >= request.startDate && today <= request.endDate);
 
+  const selectedEmployee = employees.find((employee) => employee.id === selectedEmployeeId) ?? null;
+  const [employeeSearch, setEmployeeSearch] = useState("");
+  const [employeePickerOpen, setEmployeePickerOpen] = useState(false);
+
+  useEffect(() => {
+    if (selectedEmployee) {
+      setEmployeeSearch(`${selectedEmployee.employeeCode} — ${employeeName(selectedEmployee)} — ${selectedEmployee.department}`);
+    } else if (!selectedEmployeeId) {
+      setEmployeeSearch("");
+    }
+  }, [selectedEmployeeId, selectedEmployee]);
+
+  const filteredEmployees = useMemo(() => {
+    const query = employeeSearch.trim().toLowerCase();
+    if (!query || selectedEmployee) return employees.slice(0, 20);
+    return employees
+      .filter((employee) =>
+        [
+          employee.employeeCode,
+          employee.firstName,
+          employee.surname,
+          employeeName(employee),
+          employee.department,
+          employee.positionTitle,
+        ].some((value) => String(value ?? "").toLowerCase().includes(query))
+      )
+      .slice(0, 20);
+  }, [employeeSearch, employees, selectedEmployee]);
+
+  function selectAbsenceEmployee(employee: Employee) {
+    onEmployeeChange(employee.id);
+    setEmployeeSearch(`${employee.employeeCode} — ${employeeName(employee)} — ${employee.department}`);
+    setEmployeePickerOpen(false);
+  }
+
+  function changeEmployeeSearch(value: string) {
+    setEmployeeSearch(value);
+    if (selectedEmployeeId) onEmployeeChange("");
+    setEmployeePickerOpen(true);
+  }
+
   const classificationStyle: Record<AbsenceClassification, string> = {
     UNJUSTIFIED: "bg-red-100 text-red-800 ring-red-200",
     SICK: "bg-violet-100 text-violet-800 ring-violet-200",
@@ -1873,12 +1914,60 @@ function AttendanceBoard({
       </div>
 
       <div className="grid gap-4 border-b border-slate-200 bg-slate-50 p-5 lg:grid-cols-[1fr_220px_auto]">
-        <label>
+        <label className="relative">
           <span className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-500">Employee</span>
-          <select value={selectedEmployeeId} onChange={(e) => onEmployeeChange(e.target.value)} className={inputClass}>
-            <option value="">Select employee</option>
-            {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.employeeCode} — {employeeName(employee)} — {employee.department}</option>)}
-          </select>
+          <div className="relative">
+            <Search size={17} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={employeeSearch}
+              onChange={(event) => changeEmployeeSearch(event.target.value)}
+              onFocus={() => setEmployeePickerOpen(true)}
+              onBlur={() => window.setTimeout(() => setEmployeePickerOpen(false), 150)}
+              placeholder="Type GCN code, name or department..."
+              autoComplete="off"
+              className={`${inputClass} pl-11 pr-10`}
+            />
+            {employeeSearch && (
+              <button
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  setEmployeeSearch("");
+                  onEmployeeChange("");
+                  setEmployeePickerOpen(true);
+                }}
+                className="absolute right-3 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center text-slate-400 hover:text-slate-900"
+                aria-label="Clear employee search"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+
+          {employeePickerOpen && !selectedEmployee && (
+            <div className="absolute z-50 mt-1 max-h-72 w-full overflow-auto border border-[#d8c9b9] bg-white shadow-2xl">
+              {filteredEmployees.length === 0 ? (
+                <div className="px-4 py-5 text-sm font-semibold text-slate-400">No employee found.</div>
+              ) : (
+                filteredEmployees.map((employee) => (
+                  <button
+                    key={employee.id}
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => selectAbsenceEmployee(employee)}
+                    className="flex w-full items-center justify-between gap-4 border-b border-slate-100 px-4 py-3 text-left last:border-b-0 hover:bg-[#fff7ec]"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-black uppercase text-slate-950">{employeeName(employee)}</span>
+                      <span className="block truncate text-xs font-semibold text-slate-500">{employee.department} · {employee.positionTitle}</span>
+                    </span>
+                    <span className="shrink-0 font-mono text-xs font-black text-[#a96529]">{employee.employeeCode}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
         </label>
         <label>
           <span className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-500">Absence date</span>
