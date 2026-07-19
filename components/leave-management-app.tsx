@@ -195,7 +195,7 @@ const authCopy = {
   en: {
     securePortal: "Secure employee portal",
     loginTitle: "Identify yourself",
-    loginText: "Enter your Employee ID and your confidential 5-character access code.",
+    loginText: "Enter your Employee ID and your confidential access code.",
     loginId: "Employee ID / account",
     code: "Access code",
     signIn: "Sign in",
@@ -216,7 +216,7 @@ const authCopy = {
   oshi: {
     securePortal: "Oshipangelo shomunambelewa sha amenwa",
     loginTitle: "Nyola omauyelele goye",
-    loginText: "Nyola Employee ID nokode yoye yomauyelele 5.",
+    loginText: "Nyola Employee ID nokode yoye yomauyelele.",
     loginId: "Employee ID / account",
     code: "Access code",
     signIn: "Tameka",
@@ -237,7 +237,7 @@ const authCopy = {
   af: {
     securePortal: "Veilige werknemerportaal",
     loginTitle: "Meld aan",
-    loginText: "Voer jou werknemer-ID en vertroulike 5-karakter toegangskode in.",
+    loginText: "Voer jou werknemer-ID en vertroulike toegangskode in.",
     loginId: "Werknemer-ID / rekening",
     code: "Toegangskode",
     signIn: "Meld aan",
@@ -1417,7 +1417,7 @@ function LoginScreen({ language, setLanguage, login, loading }: { language: AppL
               <p className="mt-5 max-w-lg text-lg leading-8 text-[#cdbfb2]">{a.confidential}</p>
             </div>
             <div className="mt-12 grid gap-3 sm:grid-cols-2">
-              <InfoTile value="5 CHAR" label={u.confidentialCode} />
+              <InfoTile value="SECURE" label={u.confidentialCode} />
               <InfoTile value="2 LEVELS" label={u.approvalLevels} />
             </div>
           </div>
@@ -1447,12 +1447,12 @@ function LoginScreen({ language, setLanguage, login, loading }: { language: AppL
                   <input
                     required
                     minLength={5}
-                    maxLength={5}
+                    maxLength={12}
                     autoComplete="off"
                     type={showCode ? "text" : "password"}
                     value={code}
-                    onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5))}
-                    placeholder="•••••"
+                    onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12))}
+                    placeholder="•••••••"
                     className={`${inputClass} pr-12 font-mono text-xl tracking-[0.35em]`}
                   />
                   <button type="button" onClick={() => setShowCode((value) => !value)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-900">
@@ -2107,7 +2107,7 @@ function EmployeeManagementPanel({
               <EditorField label={localizedCopy[language].department}><input list="employee-departments" value={editor.department} onChange={(e) => onChange({ ...editor, department: e.target.value })} placeholder="Production" className={inputClass}/><datalist id="employee-departments">{options.departments.map((d) => <option key={d} value={d}/>)}</datalist></EditorField>
               <EditorField label={u.positionTitle}><input value={editor.positionTitle} onChange={(e) => onChange({ ...editor, positionTitle: e.target.value })} placeholder="Machine Operator" className={inputClass}/></EditorField>
               <EditorField label={u.primaryRole}><input value={editor.primaryRole} onChange={(e) => onChange({ ...editor, primaryRole: e.target.value })} placeholder="Machine Operator" className={inputClass}/></EditorField>
-              <EditorField label={u.portalRole}><select value={editor.portalRole} onChange={(e) => onChange({ ...editor, portalRole: e.target.value as PortalRole })} className={inputClass}><option value="employee">{u.employee}</option><option value="supervisor">{u.supervisorLabel}</option><option value="manager">{localizedCopy[language].manager}</option></select></EditorField>
+              <EditorField label={u.portalRole}><select value={editor.portalRole} onChange={(e) => onChange({ ...editor, portalRole: e.target.value as PortalRole })} className={inputClass}><option value="employee">{u.employee}</option><option value="supervisor">{u.supervisorLabel}</option></select></EditorField>
               <EditorField label={u.supervisorLabel}><select value={editor.supervisorEmployeeId} onChange={(e) => onChange({ ...editor, supervisorEmployeeId: e.target.value })} className={inputClass}><option value="">{u.notAssigned}</option>{supervisors.filter((s) => s.id !== editor.id).map((s) => <option key={s.id} value={s.id}>{s.employee_code} — {s.first_name} {s.surname}</option>)}</select></EditorField>
             </div>
 
