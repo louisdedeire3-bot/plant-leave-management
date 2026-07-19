@@ -40,6 +40,7 @@ import {
 } from "@/lib/date";
 import { copy } from "@/lib/i18n";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
+import * as XLSX from "xlsx";
 import type {
   Employee,
   EmployeeModule,
@@ -513,7 +514,7 @@ const uiCopyEn = {
   dateFrom: "From",
   dateTo: "To",
   generateReport: "Generate report",
-  exportCsv: "Export CSV",
+  exportCsv: "Export Excel",
   selectedPeriod: "Selected period",
   reportDepartment: "Department",
   annualLeaveDays: "Annual leave days",
@@ -646,7 +647,7 @@ const uiCopy = {
     dateFrom: "Van",
     dateTo: "Tot",
     generateReport: "Genereer verslag",
-    exportCsv: "Voer CSV uit",
+    exportCsv: "Voer Excel uit",
     selectedPeriod: "Gekose tydperk",
     reportDepartment: "Afdeling",
     annualLeaveDays: "Jaarlikse verlofdae",
@@ -1589,70 +1590,145 @@ function ManagementReportView({
   const u = uiCopy[language];
   const t = localizedCopy[language];
 
-  function csvCell(value: unknown): string {
-    const text = String(value ?? "").replace(/\r?\n/g, " ").replace(/"/g, '""');
-    return `"${text}"`;
+  function asExcelDate(value: string | null | undefined): Date | string {
+    if (!value) return "";
+    const datePart = String(value).slice(0, 10);
+    const parsed = new Date(`${datePart}T00:00:00`);
+    return Number.isNaN(parsed.getTime()) ? value : parsed;
   }
 
-  function downloadCsv() {
+  function applyWorksheetLayout(
+    sheet: XLSX.WorkSheet,
+    widths: number[],
+    dateColumns: number[] = [],
+  ) {
+    sheet["!cols"] = widths.map((wch) => ({ wch }));
+
+    if (sheet["!ref"]) {
+      const range = XLSX.utils.decode_range(sheet["!ref"]);
+      sheet["!autofilter"] = {
+        ref: XLSX.utils.encode_range({
+          s: { r: 0, c: 0 },
+          e: { r: range.e.r, c: range.e.c },
+        }),
+      };
+
+      dateColumns.forEach((columnIndex) => {
+        for (let row = 1; row <= range.e.r; row += 1) {
+          const address = XLSX.utils.encode_cell({ r: row, c: columnIndex });
+          const cell = sheet[address];
+          if (cell?.t === "d") cell.z = "dd/mm/yyyy";
+        }
+      });
+    }
+  }
+
+  function downloadExcel() {
     if (!data) return;
 
-    const rows: string[][] = [
-      ["GREEN CHARCOAL NAMIBIA — MANAGEMENT REPORT"],
-      [u.selectedPeriod, data.date_from, data.date_to],
+    const workbook = XLSX.utils.book_new();
+    workbook.Props = {
+      Title: `Green Charcoal Management Report ${data.date_from} to ${data.date_to}`,
+      Subject: "Leave, absence and overtime management report",
+      Author: "Green Charcoal Namibia",
+      Company: "Green Charcoal Namibia",
+      CreatedDate: new Date(),
+    };
+
+    const summaryRows: Array<Array<string | number | Date>> = [
+      ["GREEN CHARCOAL NAMIBIA"],
+      ["MANAGEMENT REPORT"],
+      [],
+      [u.selectedPeriod, asExcelDate(data.date_from), asExcelDate(data.date_to)],
       [u.reportDepartment, data.department],
+      ["Generated at", new Date(data.generated_at)],
       [],
-      [u.leaveDetails],
-      ["Employee ID", "Employee", u.reportDepartment, u.dateFrom, u.dateTo, t.days, "Type", t.status, "Comment"],
-      ...data.leaves.map((row) => [
-        row.employee_code,
-        row.employee_name,
-        row.department,
-        row.period_start_date,
-        row.period_end_date,
-        String(row.period_days),
-        row.leave_type,
-        row.status,
-        row.comment,
-      ]),
-      [],
-      [u.absenceDetails],
-      ["Employee ID", "Employee", u.reportDepartment, "Date", u.classification, "Manager comment"],
-      ...data.absences.map((row) => [
-        row.employee_code,
-        row.employee_name,
-        row.department,
-        row.absence_date,
-        row.classification,
-        row.manager_comment,
-      ]),
-      [],
-      [u.overtimeDetails],
-      ["Employee ID", "Employee", u.reportDepartment, "Date", t.startTime, t.endTime, t.breakMinutes, t.totalHours, t.reason, t.status],
-      ...data.overtime.map((row) => [
-        row.employee_code,
-        row.employee_name,
-        row.department,
-        row.overtime_date,
-        row.start_time,
-        row.end_time,
-        String(row.break_minutes),
-        String(row.total_hours),
-        row.reason,
-        row.status,
-      ]),
+      ["KPI", "Value"],
+      [localizedCopy[language].totalEmployees, data.summary.active_employees],
+      [u.annualLeaveDays, data.summary.annual_leave_days],
+      [u.compassionateDays, data.summary.compassionate_leave_days],
+      [u.sickDays, data.summary.sick_days],
+      [u.unjustifiedDays, data.summary.unjustified_days],
+      [u.approvedOvertimeHours, Number(data.summary.approved_overtime_hours)],
+      [u.pendingOvertimeHours, Number(data.summary.pending_overtime_hours)],
+      [u.employeesWithOvertime, data.summary.employees_with_approved_overtime],
+      [u.pendingLeaveRequests, data.summary.pending_leave_requests],
     ];
 
-    const csv = "\uFEFF" + rows.map((row) => row.map(csvCell).join(";")).join("\r\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `GCN_management_report_${data.date_from}_to_${data.date_to}.csv`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows, { cellDates: true });
+    summarySheet["!cols"] = [{ wch: 34 }, { wch: 18 }, { wch: 18 }];
+    ["B4", "C4"].forEach((address) => {
+      if (summarySheet[address]?.t === "d") summarySheet[address].z = "dd/mm/yyyy";
+    });
+    if (summarySheet["B6"]?.t === "d") summarySheet["B6"].z = "dd/mm/yyyy hh:mm";
+    XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
+
+    const leaveRows = data.leaves.map((row) => ({
+      "Employee ID": row.employee_code,
+      Employee: row.employee_name,
+      Department: row.department,
+      "Report Start": asExcelDate(row.period_start_date),
+      "Report End": asExcelDate(row.period_end_date),
+      "Days in Period": Number(row.period_days),
+      "Original Start": asExcelDate(row.start_date),
+      "Original End": asExcelDate(row.end_date),
+      "Requested Days": Number(row.requested_days),
+      "Leave Type": row.leave_type,
+      Status: row.status.replaceAll("_", " "),
+      Comment: row.comment,
+      "Manager Approved At": row.manager_approved_at ? new Date(row.manager_approved_at) : "",
+      "Rejection Reason": row.rejection_reason,
+    }));
+    const leaveSheet = XLSX.utils.json_to_sheet(leaveRows, { cellDates: true });
+    applyWorksheetLayout(
+      leaveSheet,
+      [14, 26, 22, 14, 14, 14, 14, 14, 15, 18, 20, 34, 22, 34],
+      [3, 4, 6, 7, 12],
+    );
+    XLSX.utils.book_append_sheet(workbook, leaveSheet, "Leave");
+
+    const absenceRows = data.absences.map((row) => ({
+      "Employee ID": row.employee_code,
+      Employee: row.employee_name,
+      Department: row.department,
+      Date: asExcelDate(row.absence_date),
+      Classification: row.classification.replaceAll("_", " "),
+      "Manager Comment": row.manager_comment,
+      "Recorded At": row.created_at ? new Date(row.created_at) : "",
+      "Updated At": row.updated_at ? new Date(row.updated_at) : "",
+    }));
+    const absenceSheet = XLSX.utils.json_to_sheet(absenceRows, { cellDates: true });
+    applyWorksheetLayout(absenceSheet, [14, 26, 22, 14, 22, 36, 22, 22], [3, 6, 7]);
+    XLSX.utils.book_append_sheet(workbook, absenceSheet, "Absences");
+
+    const overtimeRows = data.overtime.map((row) => ({
+      "Employee ID": row.employee_code,
+      Employee: row.employee_name,
+      Department: row.department,
+      Date: asExcelDate(row.overtime_date),
+      "Start Time": String(row.start_time).slice(0, 5),
+      "End Time": String(row.end_time).slice(0, 5),
+      "Break Minutes": Number(row.break_minutes),
+      "Total Hours": Number(row.total_hours),
+      Reason: row.reason,
+      Status: row.status.replaceAll("_", " "),
+      "Manager Approved At": row.manager_approved_at ? new Date(row.manager_approved_at) : "",
+      "Rejection Reason": row.rejection_reason,
+    }));
+    const overtimeSheet = XLSX.utils.json_to_sheet(overtimeRows, { cellDates: true });
+    applyWorksheetLayout(
+      overtimeSheet,
+      [14, 26, 22, 14, 12, 12, 15, 14, 22, 20, 22, 34],
+      [3, 10],
+    );
+    XLSX.utils.book_append_sheet(workbook, overtimeSheet, "Overtime");
+
+    const filename = `GCN_management_report_${data.date_from}_to_${data.date_to}.xlsx`;
+    XLSX.writeFile(workbook, filename, {
+      bookType: "xlsx",
+      compression: true,
+      cellDates: true,
+    });
   }
 
   const summary = data?.summary;
@@ -1669,7 +1745,7 @@ function ManagementReportView({
           {data && (
             <button
               type="button"
-              onClick={downloadCsv}
+              onClick={downloadExcel}
               className="inline-flex h-11 items-center justify-center gap-2 bg-[#d99a55] px-5 text-sm font-black uppercase text-[#171310] hover:bg-[#c88843]"
             >
               <Download size={17} /> {u.exportCsv}
