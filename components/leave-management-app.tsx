@@ -48,6 +48,7 @@ import type {
   RoleView,
 } from "@/lib/types";
 
+type AppLanguage = Language | "af";
 type PortalRole = "employee" | "supervisor" | "manager";
 type ManpowerStatus = "GREEN" | "ORANGE" | "RED" | "NOT_ASSESSED";
 type CalendarScale = "day" | "week" | "month";
@@ -233,7 +234,308 @@ const authCopy = {
     actions: "Omalongitho",
     autoLogout: "App otayi logout yo yene oku amena ocomputer yofactory.",
   },
-} satisfies Record<Language, Record<string, string>>;
+  af: {
+    securePortal: "Veilige werknemerportaal",
+    loginTitle: "Meld aan",
+    loginText: "Voer jou werknemer-ID en vertroulike 5-karakter toegangskode in.",
+    loginId: "Werknemer-ID / rekening",
+    code: "Toegangskode",
+    signIn: "Meld aan",
+    invalidLogin: "Ongeldige ID of toegangskode. Die rekening word vir 15 minute gesluit ná 5 mislukte pogings.",
+    confidential: "Jou saldo, verlof en oortyd is slegs ná aanmelding sigbaar.",
+    logout: "Meld af",
+    sessionExpired: "Jou sessie het verval. Meld asseblief weer aan.",
+    day: "Dag",
+    week: "Week",
+    month: "Maand",
+    approve: "Keur goed",
+    reject: "Keur af",
+    rejectionReason: "Rede vir afkeuring",
+    decisionSaved: "Besluit gestoor.",
+    actions: "Aksies",
+    autoLogout: "Outomatiese afmelding beskerm die gedeelde fabrieksrekenaar.",
+  },
+} satisfies Record<AppLanguage, Record<string, string>>;
+
+const localizedCopy = {
+  ...copy,
+  af: {
+    ...copy.en,
+    employee: "Werknemer",
+    calendar: "Kalender",
+    supervisor: "Toesighouer",
+    manager: "Bestuur",
+    annualLeaveTab: "Jaarlikse verlof",
+    overtimeTab: "Oortyd",
+    availableBalance: "Beskikbare saldo",
+    earnedThisYear: "Opgebou hierdie jaar",
+    usedThisYear: "Gebruik hierdie jaar",
+    department: "Afdeling",
+    requestLeave: "Versoek jaarlikse verlof",
+    startDate: "Begindatum",
+    endDate: "Einddatum",
+    comment: "Kommentaar",
+    commentPlaceholder: "Opsionele kommentaar",
+    requestedDays: "Aangevraagde dae",
+    balanceAfter: "Saldo ná verlof",
+    leaveRule: "Saterdag tel as verlof. Sondag tel nie.",
+    submitRequest: "Dien versoek in",
+    myRequests: "My versoeke",
+    noRequests: "Geen verlofversoeke nie.",
+    submitted: "Versoek ingedien vir goedkeuring.",
+    invalidDates: "Kies geldige begin- en einddatums.",
+    insufficientBalance: "Onvoldoende verlofsaldo.",
+    allDepartments: "Alle afdelings",
+    approvedLeave: "Goedgekeurde verlof",
+    pendingSupervisor: "Wag op toesighouer",
+    pendingManager: "Wag op bestuur",
+    rejected: "Afgekeur",
+    cancelled: "Gekanselleer",
+    pendingRequests: "Hangende versoeke",
+    teamSize: "Spangrootte",
+    onLeaveToday: "Vandag met verlof",
+    totalEmployees: "Totale werknemers",
+    approvedThisMonth: "Hierdie maand goedgekeur",
+    firstApproval: "Eerste goedkeuring",
+    finalApproval: "Finale goedkeuring",
+    period: "Tydperk",
+    days: "dae",
+    status: "Status",
+    noPending: "Geen hangende versoeke nie.",
+    loading: "Laai...",
+    refresh: "Verfris",
+    overtimeDate: "Oortyddatum",
+    startTime: "Begintyd",
+    endTime: "Eindtyd",
+    breakMinutes: "Pouse (minute)",
+    reason: "Rede",
+    requestOvertime: "Dien oortyd in",
+    totalHours: "Totale ure",
+    hours: "ure",
+    overtimeRule: "Oortyd word ná die werk verklaar en vereis goedkeuring.",
+    submitOvertime: "Dien oortyd in",
+    myOvertime: "My oortyd",
+    noOvertime: "Geen oortydversoeke nie.",
+    overtimeSubmitted: "Oortyd ingedien vir goedkeuring.",
+    invalidOvertime: "Kies 'n geldige datum en geldige tye.",
+  },
+} as const;
+
+const uiCopyEn = {
+  appTitle: "Green Charcoal · Workforce",
+  appSubtitle: "Leave, attendance & overtime control",
+  workspace: "Workspace",
+  accessScope: "Access scope",
+  plantWorkforceSystem: "Plant workforce system",
+  leaveOvertimeControl: "Leave & overtime control",
+  confidentialCode: "individual confidential access code",
+  approvalLevels: "supervisor then manager approval",
+  factoryMode: "Factory mode",
+  lowSeason: "LOW SEASON",
+  highSeason: "HIGH SEASON",
+  lowSeasonDetail: "1 shift · Production 3 lines · Loading 1 container",
+  highSeasonDetail: "2 shifts · Production 4 lines · Loading 2 containers",
+  lowSeasonMode: "LOW SEASON MODE",
+  supervisorBoard: "Supervisor control board",
+  managerBoard: "Plant manager control board",
+  todayAttendance: "Today / Attendance",
+  overtimeControl: "Overtime control",
+  overtimeDashboard: "Manager overtime dashboard",
+  approvedHours: "Approved hours",
+  approvedEntries: "approved entries",
+  pendingHours: "Pending hours",
+  awaitingApproval: "awaiting approval",
+  employeesWithOvertime: "with approved overtime",
+  managerQueue: "Manager queue",
+  waitingFinalApproval: "waiting final approval",
+  approvedOvertime: "Approved overtime",
+  hoursByReason: "Hours by reason",
+  total: "TOTAL",
+  noApprovedOvertime: "No approved overtime for this month.",
+  highestOvertime: "Highest overtime",
+  topEmployees: "Top employees",
+  operationalView: "Operational view",
+  byDepartment: "By department",
+  employeeMasterData: "Employee master data",
+  employees: "Employees",
+  employeeManagementIntro: "Add, correct or deactivate employees without using Supabase SQL.",
+  addEmployee: "Add employee",
+  accessCodeGenerated: "Access code generated — show once",
+  dismiss: "Dismiss",
+  searchEmployeeAdmin: "Search ID, name, department, role...",
+  showInactive: "Show inactive",
+  shown: "shown",
+  positionRole: "Position / Role",
+  skills: "Skills",
+  access: "Access",
+  actions: "Actions",
+  active: "ACTIVE",
+  inactive: "INACTIVE",
+  portalReady: "PORTAL READY",
+  noAccount: "NO ACCOUNT",
+  edit: "Edit",
+  resetCode: "Reset code",
+  editEmployee: "Edit employee",
+  employeeId: "Employee ID",
+  firstName: "First name",
+  surname: "Surname",
+  positionTitle: "Position title",
+  primaryRole: "Primary role",
+  portalRole: "Portal role",
+  notAssigned: "Not assigned",
+  skillsQualifications: "Skills / qualifications",
+  cancel: "Cancel",
+  saveEmployee: "Save employee",
+  saving: "Saving...",
+  attendanceControl: "Attendance control",
+  team: "Team",
+  onLeave: "On leave",
+  absent: "Absent",
+  employee: "Employee",
+  employeeSearchPlaceholder: "Type GCN code, name or department...",
+  noEmployeeFound: "No employee found.",
+  absenceDate: "Absence date",
+  markAbsent: "Mark Absent",
+  noAbsences: "No absences recorded in this period.",
+  classification: "Classification",
+  managerAction: "Manager action",
+  unjustified: "Unjustified",
+  sickLeave: "Sick Leave",
+  annualLeave: "Annual Leave",
+  compassionateLeave: "Compassionate Leave",
+  factoryManpowerBoard: "Factory manpower board",
+  employeesShown: "Employees shown",
+  departments: "Departments",
+  absences: "Absences",
+  pending: "Pending",
+  working: "Working",
+  sunday: "Sunday",
+  away: "away",
+  employeeDepartment: "Employee / Department",
+  operationalImpactManager: "{u.operationalImpactManager}",
+  manpower: "MANPOWER",
+  season: "SEASON",
+  reassess: "RE-ASSESS",
+  selectOvertimeReason: "Select overtime reason",
+  loading: "Loading",
+  production: "Production",
+  palletizing: "Paletizing",
+  screening: "Screening",
+  briquettes: "Briquettes",
+  fines: "Fines",
+  maintenance: "Maintenance",
+  supervisorLabel: "Supervisor",
+};
+
+const uiCopy = {
+  en: uiCopyEn,
+  oshi: uiCopyEn,
+  af: {
+    ...uiCopyEn,
+    appSubtitle: "Verlof-, bywoning- en oortydbeheer",
+    workspace: "Werkruimte",
+    accessScope: "Toegangsgebied",
+    plantWorkforceSystem: "Fabriekswerkmagstelsel",
+    leaveOvertimeControl: "Verlof- en oortydbeheer",
+    confidentialCode: "individuele vertroulike toegangskode",
+    approvalLevels: "toesighouer en daarna bestuur",
+    factoryMode: "Fabrieksmodus",
+    lowSeason: "LAESEISOEN",
+    highSeason: "HOOGSEISOEN",
+    lowSeasonDetail: "1 skof · Produksie 3 lyne · Laai 1 houer",
+    highSeasonDetail: "2 skofte · Produksie 4 lyne · Laai 2 houers",
+    lowSeasonMode: "LAESEISOENMODUS",
+    supervisorBoard: "Toesighouer-beheerpaneel",
+    managerBoard: "Aanlegbestuurder se beheerpaneel",
+    todayAttendance: "Vandag / Bywoning",
+    overtimeControl: "Oortydbeheer",
+    overtimeDashboard: "Bestuur se oortydpaneel",
+    approvedHours: "Goedgekeurde ure",
+    approvedEntries: "goedgekeurde inskrywings",
+    pendingHours: "Hangende ure",
+    awaitingApproval: "wag op goedkeuring",
+    employeesWithOvertime: "met goedgekeurde oortyd",
+    managerQueue: "Bestuursry",
+    waitingFinalApproval: "wag op finale goedkeuring",
+    approvedOvertime: "Goedgekeurde oortyd",
+    hoursByReason: "Ure per rede",
+    total: "TOTAAL",
+    noApprovedOvertime: "Geen goedgekeurde oortyd vir hierdie maand nie.",
+    highestOvertime: "Hoogste oortyd",
+    topEmployees: "Topwerknemers",
+    operationalView: "Operasionele oorsig",
+    byDepartment: "Per afdeling",
+    employeeMasterData: "Werknemermeesterdata",
+    employees: "Werknemers",
+    employeeManagementIntro: "Voeg werknemers by, korrigeer of deaktiveer hulle sonder Supabase SQL.",
+    addEmployee: "Voeg werknemer by",
+    accessCodeGenerated: "Toegangskode gegenereer — wys een keer",
+    dismiss: "Sluit",
+    searchEmployeeAdmin: "Soek ID, naam, afdeling of rol...",
+    showInactive: "Wys onaktief",
+    shown: "gewys",
+    positionRole: "Pos / Rol",
+    skills: "Vaardighede",
+    access: "Toegang",
+    actions: "Aksies",
+    active: "AKTIEF",
+    inactive: "ONAKTIEF",
+    portalReady: "PORTAAL GEREED",
+    noAccount: "GEEN REKENING",
+    edit: "Wysig",
+    resetCode: "Herstel kode",
+    editEmployee: "Wysig werknemer",
+    employeeId: "Werknemer-ID",
+    firstName: "Voornaam",
+    surname: "Van",
+    positionTitle: "Postitel",
+    primaryRole: "Primêre rol",
+    portalRole: "Portaalrol",
+    notAssigned: "Nie toegeken nie",
+    skillsQualifications: "Vaardighede / kwalifikasies",
+    cancel: "Kanselleer",
+    saveEmployee: "Stoor werknemer",
+    saving: "Stoor...",
+    attendanceControl: "Bywoningsbeheer",
+    team: "Span",
+    onLeave: "Met verlof",
+    absent: "Afwesig",
+    employee: "Werknemer",
+    employeeSearchPlaceholder: "Tik GCN-kode, naam of afdeling...",
+    noEmployeeFound: "Geen werknemer gevind nie.",
+    absenceDate: "Afwesigheidsdatum",
+    markAbsent: "Merk afwesig",
+    noAbsences: "Geen afwesighede in hierdie tydperk aangeteken nie.",
+    classification: "Klassifikasie",
+    managerAction: "Bestuursaksie",
+    unjustified: "Ongeregverdig",
+    sickLeave: "Siekteverlof",
+    annualLeave: "Jaarlikse verlof",
+    compassionateLeave: "Deernisverlof",
+    factoryManpowerBoard: "Fabrieksbemanningsbord",
+    employeesShown: "Werknemers gewys",
+    departments: "Afdelings",
+    absences: "Afwesighede",
+    pending: "Hangend",
+    working: "Werk",
+    sunday: "Sondag",
+    away: "afwesig",
+    employeeDepartment: "Werknemer / Afdeling",
+    operationalImpactManager: "Die operasionele bemanningsimpak word tydens bestuursgoedkeuring hersien.",
+    manpower: "BEMANNING",
+    season: "SEISOEN",
+    reassess: "HERBEOORDEEL",
+    selectOvertimeReason: "Kies oortydrede",
+    loading: "Laai",
+    production: "Produksie",
+    palletizing: "Palletisering",
+    screening: "Sifting",
+    briquettes: "Brikette",
+    fines: "Fynmateriaal",
+    maintenance: "Instandhouding",
+    supervisorLabel: "Toesighouer",
+  },
+} as const;
 
 const statusStyles: Record<RequestStatus | "working", string> = {
   working: "bg-emerald-50 text-emerald-700 ring-emerald-200",
@@ -343,8 +645,8 @@ function initials(employee: Employee): string {
   return `${employee.firstName[0] ?? ""}${employee.surname[0] ?? ""}`.toUpperCase();
 }
 
-function statusLabel(status: RequestStatus, language: Language): string {
-  const t = copy[language];
+function statusLabel(status: RequestStatus, language: AppLanguage): string {
+  const t = localizedCopy[language];
   return {
     approved: t.approvedLeave,
     pending_supervisor: t.pendingSupervisor,
@@ -384,7 +686,7 @@ function viewOptionsFor(profile: PortalProfile): Array<{ id: RoleView; icon: Luc
 }
 
 export function LeaveManagementApp() {
-  const [language, setLanguage] = useState<Language>("en");
+  const [language, setLanguage] = useState<AppLanguage>("en");
   const [profile, setProfile] = useState<PortalProfile | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [view, setView] = useState<RoleView>("employee");
@@ -421,8 +723,9 @@ export function LeaveManagementApp() {
   const [overtimeReason, setOvertimeReason] = useState("");
 
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-  const t = copy[language];
+  const t = localizedCopy[language];
   const a = authCopy[language];
+  const u = uiCopy[language];
 
   const clearSession = useCallback(() => {
     sessionStorage.removeItem("plant_portal_token");
@@ -855,8 +1158,8 @@ export function LeaveManagementApp() {
               <Factory size={23} />
             </span>
             <span>
-              <span className="block text-[15px] font-black tracking-tight text-[#1a1512] sm:text-lg">Green Charcoal · Workforce</span>
-              <span className="hidden text-xs text-[#786d63] sm:block">Leave, attendance & overtime control</span>
+              <span className="block text-[15px] font-black tracking-tight text-[#1a1512] sm:text-lg">{u.appTitle}</span>
+              <span className="hidden text-xs text-[#786d63] sm:block">{u.appSubtitle}</span>
             </span>
           </button>
 
@@ -874,9 +1177,10 @@ export function LeaveManagementApp() {
             </button>
             <label className="flex items-center gap-2 rounded-xl border border-[#ded5ca] bg-white px-3 py-2 text-sm font-semibold text-slate-600">
               <Languages size={16} />
-              <select className="bg-transparent outline-none" value={language} onChange={(event) => setLanguage(event.target.value as Language)}>
+              <select className="bg-transparent outline-none" value={language} onChange={(event) => setLanguage(event.target.value as AppLanguage)}>
                 <option value="en">English</option>
                 <option value="oshi">Oshiwambo</option>
+                <option value="af">Afrikaans</option>
               </select>
             </label>
             <button onClick={() => void logout()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#171310] px-3 text-sm font-black text-white transition hover:bg-red-700">
@@ -889,7 +1193,7 @@ export function LeaveManagementApp() {
       <div className="mx-auto grid max-w-[1680px] grid-cols-1 gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[240px_minmax(0,1fr)] lg:px-8">
         <aside className="h-fit rounded-3xl border border-[#3a2e27] bg-[#171310] p-3 text-white shadow-2xl shadow-black/10 lg:sticky lg:top-28">
           <div className="mb-3 px-3 pb-3 pt-2">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Workspace</p>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">{u.workspace}</p>
           </div>
           <nav className="grid grid-cols-2 gap-2 lg:grid-cols-1">
             {viewOptions.map(({ id, icon: Icon }) => (
@@ -906,7 +1210,7 @@ export function LeaveManagementApp() {
             ))}
           </nav>
           <div className="mt-4 hidden rounded-2xl border border-[#332820] bg-[#201914] p-4 lg:block">
-            <p className="text-xs font-semibold text-slate-400">Access scope</p>
+            <p className="text-xs font-semibold text-slate-400">{u.accessScope}</p>
             <p className="mt-1 text-sm font-black text-white">{profile.department}</p>
             <p className="mt-3 text-xs leading-5 text-slate-500">{a.autoLogout}</p>
           </div>
@@ -967,7 +1271,8 @@ export function LeaveManagementApp() {
           {view === "supervisor" && profile.role === "supervisor" && (
             <div className="space-y-6">
               <AttendanceBoard
-                title="Today / Attendance"
+                language={language}
+                title={u.todayAttendance}
                 employees={employees}
                 absences={absences}
                 requests={requests}
@@ -982,7 +1287,7 @@ export function LeaveManagementApp() {
               />
             <ApprovalDashboard
               eyebrow={t.firstApproval}
-              title="Supervisor control board"
+              title={u.supervisorBoard}
               stats={[
                 { label: t.teamSize, value: employees.length, icon: UsersRound },
                 { label: t.onLeaveToday, value: onLeaveToday.length, icon: CalendarDays },
@@ -1006,15 +1311,17 @@ export function LeaveManagementApp() {
             <div className="space-y-6">
               <section className="border border-[#3a2e27] bg-[#171310] p-5 text-white shadow-xl shadow-black/10">
                 <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div><p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">Factory mode</p><h2 className="mt-1 text-2xl font-black">{factoryMode?.low_season_mode !== false ? "LOW SEASON" : "HIGH SEASON"}</h2><p className="mt-1 text-sm text-slate-400">{factoryMode?.low_season_mode !== false ? "1 shift · Production 3 lines · Loading 1 container" : "2 shifts · Production 4 lines · Loading 2 containers"}</p></div>
-                  <label className="flex items-center gap-3 border border-[#4a382a] bg-[#211914] px-4 py-3"><span className="text-sm font-black">LOW SEASON MODE</span><input type="checkbox" checked={factoryMode?.low_season_mode !== false} onChange={(e) => void toggleLowSeason(e.target.checked)} className="h-5 w-5" /></label>
+                  <div><p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">{u.factoryMode}</p><h2 className="mt-1 text-2xl font-black">{factoryMode?.low_season_mode !== false ? u.lowSeason : u.highSeason}</h2><p className="mt-1 text-sm text-slate-400">{factoryMode?.low_season_mode !== false ? u.lowSeasonDetail : u.highSeasonDetail}</p></div>
+                  <label className="flex items-center gap-3 border border-[#4a382a] bg-[#211914] px-4 py-3"><span className="text-sm font-black">{u.lowSeasonMode}</span><input type="checkbox" checked={factoryMode?.low_season_mode !== false} onChange={(e) => void toggleLowSeason(e.target.checked)} className="h-5 w-5" /></label>
                 </div>
               </section>
               <ManagerOvertimeDashboard
+                language={language}
                 requests={overtimeRequests}
                 employees={employees}
               />
               <EmployeeManagementPanel
+                language={language}
                 employees={managedEmployees}
                 options={employeeAdminOptions}
                 editor={employeeEditor}
@@ -1029,7 +1336,8 @@ export function LeaveManagementApp() {
                 onDismissCode={() => setNewAccessCode(null)}
               />
               <AttendanceBoard
-                title="Today / Attendance"
+                language={language}
+                title={u.todayAttendance}
                 employees={employees}
                 absences={absences}
                 requests={requests}
@@ -1044,7 +1352,7 @@ export function LeaveManagementApp() {
               />
             <ApprovalDashboard
               eyebrow={t.finalApproval}
-              title="Plant manager control board"
+              title={u.managerBoard}
               stats={[
                 { label: t.totalEmployees, value: employees.length, icon: UsersRound },
                 { label: t.onLeaveToday, value: onLeaveToday.length, icon: CalendarDays },
@@ -1070,12 +1378,13 @@ export function LeaveManagementApp() {
   );
 }
 
-function LoginScreen({ language, setLanguage, login, loading }: { language: Language; setLanguage: (language: Language) => void; login: (loginId: string, code: string) => Promise<string | null>; loading: boolean }) {
+function LoginScreen({ language, setLanguage, login, loading }: { language: AppLanguage; setLanguage: (language: AppLanguage) => void; login: (loginId: string, code: string) => Promise<string | null>; loading: boolean }) {
   const [loginId, setLoginId] = useState("");
   const [code, setCode] = useState("");
   const [showCode, setShowCode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const a = authCopy[language];
+  const u = uiCopy[language];
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1089,9 +1398,10 @@ function LoginScreen({ language, setLanguage, login, loading }: { language: Lang
       <div className="mx-auto flex max-w-6xl justify-end pb-4">
         <label className="flex items-center gap-2 rounded-xl border border-[#4a382a] bg-[#171310] px-3 py-2 text-sm font-bold text-[#e9dfd4]">
           <Languages size={16} />
-          <select className="bg-transparent outline-none" value={language} onChange={(event) => setLanguage(event.target.value as Language)}>
+          <select className="bg-transparent outline-none" value={language} onChange={(event) => setLanguage(event.target.value as AppLanguage)}>
             <option value="en">English</option>
             <option value="oshi">Oshiwambo</option>
+            <option value="af">Afrikaans</option>
           </select>
         </label>
       </div>
@@ -1101,14 +1411,14 @@ function LoginScreen({ language, setLanguage, login, loading }: { language: Lang
           <div className="relative flex h-full flex-col justify-between">
             <div>
               <span className="inline-flex items-center gap-2 border border-white/20 bg-white/10 px-3 py-2 font-mono text-xs font-black uppercase tracking-[0.18em]">
-                <Factory size={15} /> Plant workforce system
+                <Factory size={15} /> {u.plantWorkforceSystem}
               </span>
-              <h1 className="mt-10 max-w-xl text-4xl font-black uppercase tracking-tight sm:text-6xl">Leave & overtime control</h1>
+              <h1 className="mt-10 max-w-xl text-4xl font-black uppercase tracking-tight sm:text-6xl">{u.leaveOvertimeControl}</h1>
               <p className="mt-5 max-w-lg text-lg leading-8 text-[#cdbfb2]">{a.confidential}</p>
             </div>
             <div className="mt-12 grid gap-3 sm:grid-cols-2">
-              <InfoTile value="5 CHAR" label="individual confidential access code" />
-              <InfoTile value="2 LEVELS" label="supervisor then manager approval" />
+              <InfoTile value="5 CHAR" label={u.confidentialCode} />
+              <InfoTile value="2 LEVELS" label={u.approvalLevels} />
             </div>
           </div>
         </section>
@@ -1164,8 +1474,8 @@ function LoginScreen({ language, setLanguage, login, loading }: { language: Lang
 }
 
 interface EmployeeViewProps {
-  language: Language;
-  t: (typeof copy)[Language];
+  language: AppLanguage;
+  t: (typeof localizedCopy)[AppLanguage];
   employee: Employee;
   module: EmployeeModule;
   setModule: (value: EmployeeModule) => void;
@@ -1197,6 +1507,7 @@ interface EmployeeViewProps {
 function EmployeeView(props: EmployeeViewProps) {
   const { language, t, employee, module, setModule, startDate, endDate, comment, setStartDate, setEndDate, setComment, requestedDays, submitLeave, overtimeDate, overtimeStart, overtimeEnd, breakMinutes, overtimeReason, setOvertimeDate, setOvertimeStart, setOvertimeEnd, setBreakMinutes, setOvertimeReason, calculatedOvertime, submitOvertime, saving, employeeRequests, employeeOvertime } = props;
   const balanceAfter = employee.balance - requestedDays;
+  const u = uiCopy[language];
 
   return (
     <div className="space-y-6">
@@ -1207,7 +1518,7 @@ function EmployeeView(props: EmployeeViewProps) {
             <p className="text-sm font-bold text-[#b87333]">{employee.employeeCode} · {employee.department}</p>
             <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">{employeeName(employee)}</h1>
             <p className="mt-1 text-sm font-semibold text-slate-700">{employee.positionTitle}</p>
-            <p className="mt-1 text-sm text-slate-500">Supervisor: {employee.supervisor}</p>
+            <p className="mt-1 text-sm text-slate-500">{u.supervisorLabel}: {employee.supervisor}</p>
           </div>
         </div>
         <div className="grid gap-px bg-slate-200 sm:grid-cols-2 xl:grid-cols-4">
@@ -1265,14 +1576,14 @@ function EmployeeView(props: EmployeeViewProps) {
               <Field label={t.breakMinutes}><input min={0} type="number" value={breakMinutes} onChange={(event) => setBreakMinutes(Number(event.target.value))} className={inputClass} /></Field>
               <Field label={t.reason}>
                 <select required value={overtimeReason} onChange={(event) => setOvertimeReason(event.target.value)} className={inputClass}>
-                  <option value="">Select overtime reason</option>
-                  <option value="Loading">Loading</option>
-                  <option value="Production">Production</option>
-                  <option value="Paletizing">Paletizing</option>
-                  <option value="Screening">Screening</option>
-                  <option value="Briquettes">Briquettes</option>
-                  <option value="Fines">Fines</option>
-                  <option value="Maintenance">Maintenance</option>
+                  <option value="">{u.selectOvertimeReason}</option>
+                  <option value="Loading">{u.loading}</option>
+                  <option value="Production">{u.production}</option>
+                  <option value="Paletizing">{u.palletizing}</option>
+                  <option value="Screening">{u.screening}</option>
+                  <option value="Briquettes">{u.briquettes}</option>
+                  <option value="Fines">{u.fines}</option>
+                  <option value="Maintenance">{u.maintenance}</option>
                 </select>
               </Field>
               <CalculationTile label={t.totalHours} value={`${calculatedOvertime} ${t.hours}`} />
@@ -1296,9 +1607,10 @@ function EmployeeView(props: EmployeeViewProps) {
   );
 }
 
-function CalendarView({ t, language, employees, requests, absences, department, setDepartment, anchor, setAnchor }: { t: (typeof copy)[Language]; language: Language; employees: Employee[]; requests: LeaveWithManpower[]; absences: AbsenceRow[]; department: string; setDepartment: (value: string) => void; anchor: string; setAnchor: (value: string) => void }) {
+function CalendarView({ t, language, employees, requests, absences, department, setDepartment, anchor, setAnchor }: { t: (typeof localizedCopy)[AppLanguage]; language: AppLanguage; employees: Employee[]; requests: LeaveWithManpower[]; absences: AbsenceRow[]; department: string; setDepartment: (value: string) => void; anchor: string; setAnchor: (value: string) => void }) {
   const [scale, setScale] = useState<CalendarScale>("week");
   const a = authCopy[language];
+  const u = uiCopy[language];
   const departments = useMemo(() => Array.from(new Set(employees.map((employee) => employee.department))).sort(), [employees]);
   const anchorDate = new Date(`${anchor}T00:00:00`);
   const rangeDates = useMemo(() => {
@@ -1400,7 +1712,7 @@ function CalendarView({ t, language, employees, requests, absences, department, 
           <div className="border-b border-slate-700 px-4 py-3 xl:border-b-0 xl:border-r">
             <div className="flex items-center gap-3">
               <span className="grid h-9 w-9 place-items-center border border-[#4a382a] bg-[#211914] text-[#e6a45c]"><Factory size={18} /></span>
-              <div><p className="font-mono text-[10px] font-black uppercase tracking-[0.2em] text-amber-400">Factory manpower board</p><h1 className="text-xl font-black uppercase tracking-tight">{title()}</h1></div>
+              <div><p className="font-mono text-[10px] font-black uppercase tracking-[0.2em] text-amber-400">{u.factoryManpowerBoard}</p><h1 className="text-xl font-black uppercase tracking-tight">{title()}</h1></div>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 p-3">
@@ -1416,42 +1728,42 @@ function CalendarView({ t, language, employees, requests, absences, department, 
           </div>
         </div>
         <div className="grid grid-cols-2 border-t border-slate-700 sm:grid-cols-5">
-          <BoardStat label="Employees shown" value={visibleEmployees.length} />
-          <BoardStat label="Departments" value={departmentEntries.length} />
+          <BoardStat label={u.employeesShown} value={visibleEmployees.length} />
+          <BoardStat label={u.departments} value={departmentEntries.length} />
           <BoardStat label="Approved leave" value={approvedCount} accent="text-sky-400" />
-          <BoardStat label="Absences" value={absentCount} accent="text-red-400" />
-          <BoardStat label="Pending" value={pendingCount} accent="text-amber-400" last />
+          <BoardStat label={u.absences} value={absentCount} accent="text-red-400" />
+          <BoardStat label={u.pending} value={pendingCount} accent="text-amber-400" last />
         </div>
       </section>
 
       <section className="border border-slate-400 bg-white shadow-xl">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-300 bg-slate-200 px-3 py-2 font-mono text-[9px] font-black uppercase tracking-[0.08em] text-slate-700">
-          <LegendBox className="border-emerald-300 bg-emerald-100" label="W — Working" />
-          <LegendBox className="border-blue-400 bg-blue-600" label="AL — Annual Leave" />
-          <LegendBox className="border-violet-500 bg-violet-600" label="SL — Sick Leave" />
-          <LegendBox className="border-amber-500 bg-amber-400" label="CL — Compassionate Leave" />
-          <LegendBox className="border-red-500 bg-red-600" label="UA — Unjustified Absence" />
+          <LegendBox className="border-emerald-300 bg-emerald-100" label={`W — ${u.working}`} />
+          <LegendBox className="border-blue-400 bg-blue-600" label={`AL — ${u.annualLeave}`} />
+          <LegendBox className="border-violet-500 bg-violet-600" label={`SL — ${u.sickLeave}`} />
+          <LegendBox className="border-amber-500 bg-amber-400" label={`CL — ${u.compassionateLeave}`} />
+          <LegendBox className="border-red-500 bg-red-600" label={`UA — ${u.unjustified}`} />
           <LegendBox className="border-amber-400 bg-amber-300" label="PS — Pending supervisor" />
           <LegendBox className="border-violet-400 bg-violet-600" label="PM — Pending manager" />
-          <LegendBox className="border-slate-500 bg-slate-700" label="OFF — Sunday" />
+          <LegendBox className="border-slate-500 bg-slate-700" label={`OFF — ${u.sunday}`} />
         </div>
         <div className="max-h-[78vh] overflow-auto">
           <table className="border-collapse text-xs" style={{ minWidth, width: "100%" }}>
             <thead className="sticky top-0 z-30">
               <tr className="bg-slate-900 text-white">
-                <th style={{ minWidth: employeeColumnWidth, width: employeeColumnWidth }} className="sticky left-0 z-40 border-r border-slate-600 bg-slate-900 px-3 py-2 text-left font-mono text-[10px] font-black uppercase tracking-[0.1em]">Employee / Department</th>
+                <th style={{ minWidth: employeeColumnWidth, width: employeeColumnWidth }} className="sticky left-0 z-40 border-r border-slate-600 bg-slate-900 px-3 py-2 text-left font-mono text-[10px] font-black uppercase tracking-[0.1em]">{u.employeeDepartment}</th>
                 {rangeDates.map((date) => {
                   const away = visibleEmployees.filter((employee) => calendarState(employee.id, isoDate(date)).kind !== "working").length;
                   const saturday = date.getDay() === 6;
                   const sunday = date.getDay() === 0;
-                  return <th key={isoDate(date)} style={{ minWidth: cellWidth }} className={`border-r border-slate-700 px-0.5 py-1 text-center ${saturday ? "bg-amber-950" : sunday ? "bg-slate-800" : ""}`}><p className="font-mono text-[8px] font-black uppercase text-slate-400">{new Intl.DateTimeFormat("en-GB", { weekday: scale === "month" ? "narrow" : "short" }).format(date)}</p><p className={`${scale === "month" ? "text-sm" : "text-base"} leading-none font-black`}>{new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: scale === "month" ? undefined : "short" }).format(date)}</p><p className="mt-0.5 font-mono text-[7px] font-black uppercase text-amber-400">{away} away</p></th>;
+                  return <th key={isoDate(date)} style={{ minWidth: cellWidth }} className={`border-r border-slate-700 px-0.5 py-1 text-center ${saturday ? "bg-amber-950" : sunday ? "bg-slate-800" : ""}`}><p className="font-mono text-[8px] font-black uppercase text-slate-400">{new Intl.DateTimeFormat("en-GB", { weekday: scale === "month" ? "narrow" : "short" }).format(date)}</p><p className={`${scale === "month" ? "text-sm" : "text-base"} leading-none font-black`}>{new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: scale === "month" ? undefined : "short" }).format(date)}</p><p className="mt-0.5 font-mono text-[7px] font-black uppercase text-amber-400">{away} {u.away}</p></th>;
                 })}
               </tr>
             </thead>
             <tbody>
               {departmentEntries.map(([departmentName, departmentEmployees]) => (
                 <Fragment key={departmentName}>
-                  <tr className="bg-slate-300"><td colSpan={rangeDates.length + 1} className="border-y border-slate-500 px-3 py-1 font-mono text-[10px] font-black uppercase tracking-[0.12em] text-slate-900"><div className="flex items-center justify-between"><span>{departmentName}</span><span>{departmentEmployees.length} employees</span></div></td></tr>
+                  <tr className="bg-slate-300"><td colSpan={rangeDates.length + 1} className="border-y border-slate-500 px-3 py-1 font-mono text-[10px] font-black uppercase tracking-[0.12em] text-slate-900"><div className="flex items-center justify-between"><span>{departmentName}</span><span>{departmentEmployees.length} {u.employees.toLowerCase()}</span></div></td></tr>
                   {departmentEmployees.map((employee, employeeIndex) => (
                     <tr key={employee.id} className={employeeIndex % 2 === 0 ? "bg-white" : "bg-slate-50"}>
                       <td style={{ minWidth: employeeColumnWidth, width: employeeColumnWidth }} className="sticky left-0 z-10 border-b border-r border-slate-300 bg-inherit px-2 py-1"><div className="flex items-center gap-2"><span className="grid h-7 w-7 shrink-0 place-items-center border border-slate-500 bg-slate-800 font-mono text-[9px] font-black text-white">{initials(employee)}</span><div className="min-w-0"><p className="truncate text-[11px] font-black uppercase leading-tight text-slate-950">{employeeName(employee)}</p><p className="max-w-[195px] truncate font-mono text-[9px] font-bold uppercase leading-tight text-slate-500">{employee.employeeCode} · {employee.positionTitle}</p></div></div></td>
@@ -1479,8 +1791,8 @@ interface ApprovalDashboardProps {
   employees: Employee[];
   leaveRequests: LeaveWithManpower[];
   overtimeRequests: OvertimeRequest[];
-  language: Language;
-  t: (typeof copy)[Language];
+  language: AppLanguage;
+  t: (typeof localizedCopy)[AppLanguage];
   savingRequestId: string | null;
   onLeaveDecision: (id: string, decision: Decision) => void;
   onOvertimeDecision: (id: string, decision: Decision) => void;
@@ -1492,12 +1804,15 @@ interface ApprovalDashboardProps {
 
 
 function ManagerOvertimeDashboard({
+  language,
   requests,
   employees,
 }: {
+  language: AppLanguage;
   requests: OvertimeRequest[];
   employees: Employee[];
 }) {
+  const u = uiCopy[language];
   const today = new Date();
   const [monthKey, setMonthKey] = useState(
     `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`
@@ -1515,7 +1830,7 @@ function ManagerOvertimeDashboard({
   const uniqueEmployees = new Set(approved.map((request) => request.employeeId)).size;
 
   const reasonHours = approved.reduce<Record<string, number>>((acc, request) => {
-    const key = request.reason || "Other / Not specified";
+    const key = request.reason || (language === "af" ? "Ander / Nie gespesifiseer nie" : "Other / Not specified");
     acc[key] = (acc[key] ?? 0) + request.totalHours;
     return acc;
   }, {});
@@ -1560,8 +1875,8 @@ function ManagerOvertimeDashboard({
     <section className="overflow-hidden border border-slate-300 bg-white shadow-xl">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#4a382a] bg-[#171310] px-5 py-4 text-white">
         <div>
-          <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">Overtime control</p>
-          <h2 className="mt-1 text-2xl font-black uppercase">Manager overtime dashboard</h2>
+          <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">{u.overtimeControl}</p>
+          <h2 className="mt-1 text-2xl font-black uppercase">{u.overtimeDashboard}</h2>
           <p className="mt-1 text-sm text-slate-400">{monthTitle}</p>
         </div>
         <input
@@ -1573,25 +1888,25 @@ function ManagerOvertimeDashboard({
       </div>
 
       <div className="grid grid-cols-2 border-b border-slate-300 bg-slate-50 lg:grid-cols-4">
-        <OvertimeKpi label="Approved hours" value={`${approvedHours.toFixed(1)} h`} detail={`${approved.length} approved entries`} />
-        <OvertimeKpi label="Pending hours" value={`${pendingHours.toFixed(1)} h`} detail={`${pending.length} awaiting approval`} accent="text-amber-600" />
-        <OvertimeKpi label="Employees" value={String(uniqueEmployees)} detail="with approved overtime" accent="text-blue-600" />
-        <OvertimeKpi label="Manager queue" value={String(pendingManager.length)} detail="waiting final approval" accent="text-violet-600" />
+        <OvertimeKpi label="Approved hours" value={`${approvedHours.toFixed(1)} h`} detail={`${approved.length} ${u.approvedEntries}`} />
+        <OvertimeKpi label="Pending hours" value={`${pendingHours.toFixed(1)} h`} detail={`${pending.length} ${u.awaitingApproval}`} accent="text-amber-600" />
+        <OvertimeKpi label="Employees" value={String(uniqueEmployees)} detail={u.employeesWithOvertime} accent="text-blue-600" />
+        <OvertimeKpi label="Manager queue" value={String(pendingManager.length)} detail={u.waitingFinalApproval} accent="text-violet-600" />
       </div>
 
       <div className="grid lg:grid-cols-[1.15fr_0.85fr]">
         <div className="border-b border-slate-200 p-5 lg:border-b-0 lg:border-r">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="font-mono text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Approved overtime</p>
-              <h3 className="mt-1 text-lg font-black uppercase text-slate-950">Hours by reason</h3>
+              <p className="font-mono text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{u.approvedOvertime}</p>
+              <h3 className="mt-1 text-lg font-black uppercase text-slate-950">{u.hoursByReason}</h3>
             </div>
-            <span className="font-mono text-xs font-black text-slate-500">{approvedHours.toFixed(1)} H TOTAL</span>
+            <span className="font-mono text-xs font-black text-slate-500">{approvedHours.toFixed(1)} H {u.total}</span>
           </div>
 
           <div className="mt-4 space-y-3">
             {reasonRows.length === 0 ? (
-              <p className="border border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-semibold text-slate-400">No approved overtime for this month.</p>
+              <p className="border border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-semibold text-slate-400">{u.noApprovedOvertime}</p>
             ) : (
               reasonRows.map((row) => (
                 <div key={row.reason}>
@@ -1613,8 +1928,8 @@ function ManagerOvertimeDashboard({
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-1">
           <div className="border-b border-slate-200 p-5">
-            <p className="font-mono text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Highest overtime</p>
-            <h3 className="mt-1 text-lg font-black uppercase text-slate-950">Top employees</h3>
+            <p className="font-mono text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{u.highestOvertime}</p>
+            <h3 className="mt-1 text-lg font-black uppercase text-slate-950">{u.topEmployees}</h3>
             <div className="mt-3 space-y-2">
               {topEmployees.length === 0 ? (
                 <p className="text-sm font-semibold text-slate-400">No approved overtime.</p>
@@ -1631,8 +1946,8 @@ function ManagerOvertimeDashboard({
           </div>
 
           <div className="p-5">
-            <p className="font-mono text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Operational view</p>
-            <h3 className="mt-1 text-lg font-black uppercase text-slate-950">By department</h3>
+            <p className="font-mono text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{u.operationalView}</p>
+            <h3 className="mt-1 text-lg font-black uppercase text-slate-950">{u.byDepartment}</h3>
             <div className="mt-3 space-y-2">
               {departmentRows.length === 0 ? (
                 <p className="text-sm font-semibold text-slate-400">No approved overtime.</p>
@@ -1671,6 +1986,7 @@ function OvertimeKpi({
 }
 
 function EmployeeManagementPanel({
+  language,
   employees,
   options,
   editor,
@@ -1684,6 +2000,7 @@ function EmployeeManagementPanel({
   onResetCode,
   onDismissCode,
 }: {
+  language: AppLanguage;
   employees: AdminEmployeeRow[];
   options: EmployeeAdminOptions;
   editor: EmployeeEditorState | null;
@@ -1697,6 +2014,7 @@ function EmployeeManagementPanel({
   onResetCode: (employee: AdminEmployeeRow) => void;
   onDismissCode: () => void;
 }) {
+  const u = uiCopy[language];
   const [search, setSearch] = useState("");
   const [showInactive, setShowInactive] = useState(false);
 
@@ -1720,53 +2038,53 @@ function EmployeeManagementPanel({
     <section className="border border-slate-300 bg-white shadow-xl">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-300 bg-slate-950 p-5 text-white">
         <div>
-          <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">Employee master data</p>
-          <h2 className="mt-1 text-2xl font-black uppercase">Employees</h2>
-          <p className="mt-1 text-sm text-slate-400">Add, correct or deactivate employees without using Supabase SQL.</p>
+          <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">{u.employeeMasterData}</p>
+          <h2 className="mt-1 text-2xl font-black uppercase">{u.employees}</h2>
+          <p className="mt-1 text-sm text-slate-400">{u.employeeManagementIntro}</p>
         </div>
         <button type="button" onClick={onNew} className="inline-flex items-center gap-2 bg-blue-600 px-4 py-3 text-sm font-black uppercase hover:bg-blue-500">
-          <Plus size={17} /> Add employee
+          <Plus size={17} /> {u.addEmployee}
         </button>
       </div>
 
       {accessCode && (
         <div className="m-5 flex flex-wrap items-center justify-between gap-4 border-2 border-emerald-400 bg-emerald-50 p-4 text-emerald-950">
           <div>
-            <p className="font-mono text-xs font-black uppercase tracking-[0.14em]">Access code generated — show once</p>
+            <p className="font-mono text-xs font-black uppercase tracking-[0.14em]">{u.accessCodeGenerated}</p>
             <p className="mt-1 text-lg font-black">{accessCode.employeeCode} · <span className="font-mono text-2xl tracking-[0.18em]">{accessCode.code}</span></p>
           </div>
-          <button onClick={onDismissCode} className="border border-emerald-700 px-3 py-2 text-xs font-black uppercase">Dismiss</button>
+          <button onClick={onDismissCode} className="border border-emerald-700 px-3 py-2 text-xs font-black uppercase">{u.dismiss}</button>
         </div>
       )}
 
       <div className="flex flex-wrap gap-3 border-b border-slate-200 bg-slate-50 p-4">
         <label className="relative min-w-[260px] flex-1">
           <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search ID, name, department, role..." className="h-11 w-full border border-slate-300 bg-white pl-10 pr-3 text-sm font-semibold outline-none focus:border-blue-500" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={u.searchEmployeeAdmin} className="h-11 w-full border border-slate-300 bg-white pl-10 pr-3 text-sm font-semibold outline-none focus:border-blue-500" />
         </label>
         <label className="flex items-center gap-2 border border-slate-300 bg-white px-3 text-sm font-black">
           <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
-          Show inactive
+          {u.showInactive}
         </label>
         <div className="flex items-center border border-slate-300 bg-white px-4 text-sm font-black text-slate-600">
-          {filtered.length} shown / {employees.length} total
+          {filtered.length} {u.shown} / {employees.length} {u.total.toLowerCase()}
         </div>
       </div>
 
       <div className="max-h-[520px] overflow-auto">
         <table className="w-full min-w-[1050px] border-collapse">
           <thead className="sticky top-0 z-10 bg-slate-200 text-left font-mono text-xs font-black uppercase tracking-[0.1em] text-slate-600">
-            <tr><th className="px-4 py-3">Employee</th><th className="px-4 py-3">Department</th><th className="px-4 py-3">Position / Role</th><th className="px-4 py-3">Skills</th><th className="px-4 py-3">Access</th><th className="px-4 py-3">Actions</th></tr>
+            <tr><th className="px-4 py-3">{u.employee}</th><th className="px-4 py-3">{localizedCopy[language].department}</th><th className="px-4 py-3">{u.positionRole}</th><th className="px-4 py-3">{u.skills}</th><th className="px-4 py-3">{u.access}</th><th className="px-4 py-3">{u.actions}</th></tr>
           </thead>
           <tbody>
             {filtered.map((employee) => (
               <tr key={employee.id} className={`border-t border-slate-200 ${employee.active ? "bg-white" : "bg-slate-100 opacity-70"}`}>
-                <td className="px-4 py-3"><p className="font-black text-slate-950">{employee.first_name} {employee.surname}</p><p className="font-mono text-xs font-bold text-slate-500">{employee.employee_code} · {employee.active ? "ACTIVE" : "INACTIVE"}</p></td>
+                <td className="px-4 py-3"><p className="font-black text-slate-950">{employee.first_name} {employee.surname}</p><p className="font-mono text-xs font-bold text-slate-500">{employee.employee_code} · {employee.active ? u.active : u.inactive}</p></td>
                 <td className="px-4 py-3 font-semibold text-slate-700">{employee.department}</td>
                 <td className="px-4 py-3"><p className="font-black text-slate-900">{employee.position_title || "—"}</p><p className="text-xs font-semibold uppercase text-slate-500">{employee.primary_role || "No primary role"} · {employee.portal_role}</p></td>
                 <td className="px-4 py-3"><div className="flex max-w-[330px] flex-wrap gap-1">{(employee.skill_codes ?? []).map((skill) => <span key={skill} className="bg-slate-100 px-2 py-1 font-mono text-[10px] font-black text-slate-700">{skill.replaceAll("_"," ")}</span>)}</div></td>
-                <td className="px-4 py-3"><span className={`inline-flex px-2 py-1 text-xs font-black ${employee.has_account ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-600"}`}>{employee.has_account ? "PORTAL READY" : "NO ACCOUNT"}</span></td>
-                <td className="px-4 py-3"><div className="flex gap-2"><button onClick={() => onEdit(employee)} className="inline-flex items-center gap-1 border border-slate-300 bg-white px-3 py-2 text-xs font-black uppercase hover:border-blue-500 hover:text-blue-700"><Pencil size={14}/> Edit</button><button disabled={!employee.has_account || busy} onClick={() => onResetCode(employee)} className="inline-flex items-center gap-1 border border-slate-300 bg-white px-3 py-2 text-xs font-black uppercase hover:border-amber-500 hover:text-amber-700 disabled:opacity-40"><KeyRound size={14}/> Reset code</button></div></td>
+                <td className="px-4 py-3"><span className={`inline-flex px-2 py-1 text-xs font-black ${employee.has_account ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-600"}`}>{employee.has_account ? u.portalReady : u.noAccount}</span></td>
+                <td className="px-4 py-3"><div className="flex gap-2"><button onClick={() => onEdit(employee)} className="inline-flex items-center gap-1 border border-slate-300 bg-white px-3 py-2 text-xs font-black uppercase hover:border-blue-500 hover:text-blue-700"><Pencil size={14}/> {u.edit}</button><button disabled={!employee.has_account || busy} onClick={() => onResetCode(employee)} className="inline-flex items-center gap-1 border border-slate-300 bg-white px-3 py-2 text-xs font-black uppercase hover:border-amber-500 hover:text-amber-700 disabled:opacity-40"><KeyRound size={14}/> {u.resetCode}</button></div></td>
               </tr>
             ))}
           </tbody>
@@ -1777,24 +2095,24 @@ function EmployeeManagementPanel({
         <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-950/70 p-4 sm:p-8">
           <div className="w-full max-w-4xl border border-slate-400 bg-white shadow-2xl">
             <div className="flex items-center justify-between bg-slate-950 p-5 text-white">
-              <div><p className="font-mono text-xs font-black uppercase tracking-[0.16em] text-amber-400">Employee management</p><h3 className="text-2xl font-black">{editor.id ? "Edit employee" : "Add employee"}</h3></div>
+              <div><p className="font-mono text-xs font-black uppercase tracking-[0.16em] text-amber-400">{u.employeeMasterData}</p><h3 className="text-2xl font-black">{editor.id ? u.editEmployee : u.addEmployee}</h3></div>
               <button onClick={onClose} className="grid h-10 w-10 place-items-center border border-slate-700 hover:bg-slate-800"><X size={18}/></button>
             </div>
 
             <div className="grid gap-4 p-5 sm:grid-cols-2">
-              <EditorField label="Employee ID"><input value={editor.employeeCode} onChange={(e) => onChange({ ...editor, employeeCode: e.target.value.toUpperCase() })} placeholder="GCN503" className={inputClass} /></EditorField>
-              <EditorField label="Status"><select value={editor.active ? "active" : "inactive"} onChange={(e) => onChange({ ...editor, active: e.target.value === "active" })} className={inputClass}><option value="active">Active</option><option value="inactive">Inactive</option></select></EditorField>
-              <EditorField label="First name"><input value={editor.firstName} onChange={(e) => onChange({ ...editor, firstName: e.target.value })} className={inputClass} /></EditorField>
-              <EditorField label="Surname"><input value={editor.surname} onChange={(e) => onChange({ ...editor, surname: e.target.value })} className={inputClass} /></EditorField>
-              <EditorField label="Department"><input list="employee-departments" value={editor.department} onChange={(e) => onChange({ ...editor, department: e.target.value })} placeholder="Production" className={inputClass}/><datalist id="employee-departments">{options.departments.map((d) => <option key={d} value={d}/>)}</datalist></EditorField>
-              <EditorField label="Position title"><input value={editor.positionTitle} onChange={(e) => onChange({ ...editor, positionTitle: e.target.value })} placeholder="Machine Operator" className={inputClass}/></EditorField>
-              <EditorField label="Primary role"><input value={editor.primaryRole} onChange={(e) => onChange({ ...editor, primaryRole: e.target.value })} placeholder="Machine Operator" className={inputClass}/></EditorField>
-              <EditorField label="Portal role"><select value={editor.portalRole} onChange={(e) => onChange({ ...editor, portalRole: e.target.value as PortalRole })} className={inputClass}><option value="employee">Employee</option><option value="supervisor">Supervisor</option><option value="manager">Manager</option></select></EditorField>
-              <EditorField label="Supervisor"><select value={editor.supervisorEmployeeId} onChange={(e) => onChange({ ...editor, supervisorEmployeeId: e.target.value })} className={inputClass}><option value="">Not assigned</option>{supervisors.filter((s) => s.id !== editor.id).map((s) => <option key={s.id} value={s.id}>{s.employee_code} — {s.first_name} {s.surname}</option>)}</select></EditorField>
+              <EditorField label={u.employeeId}><input value={editor.employeeCode} onChange={(e) => onChange({ ...editor, employeeCode: e.target.value.toUpperCase() })} placeholder="GCN503" className={inputClass} /></EditorField>
+              <EditorField label={localizedCopy[language].status}><select value={editor.active ? "active" : "inactive"} onChange={(e) => onChange({ ...editor, active: e.target.value === "active" })} className={inputClass}><option value="active">{u.active}</option><option value="inactive">{u.inactive}</option></select></EditorField>
+              <EditorField label={u.firstName}><input value={editor.firstName} onChange={(e) => onChange({ ...editor, firstName: e.target.value })} className={inputClass} /></EditorField>
+              <EditorField label={u.surname}><input value={editor.surname} onChange={(e) => onChange({ ...editor, surname: e.target.value })} className={inputClass} /></EditorField>
+              <EditorField label={localizedCopy[language].department}><input list="employee-departments" value={editor.department} onChange={(e) => onChange({ ...editor, department: e.target.value })} placeholder="Production" className={inputClass}/><datalist id="employee-departments">{options.departments.map((d) => <option key={d} value={d}/>)}</datalist></EditorField>
+              <EditorField label={u.positionTitle}><input value={editor.positionTitle} onChange={(e) => onChange({ ...editor, positionTitle: e.target.value })} placeholder="Machine Operator" className={inputClass}/></EditorField>
+              <EditorField label={u.primaryRole}><input value={editor.primaryRole} onChange={(e) => onChange({ ...editor, primaryRole: e.target.value })} placeholder="Machine Operator" className={inputClass}/></EditorField>
+              <EditorField label={u.portalRole}><select value={editor.portalRole} onChange={(e) => onChange({ ...editor, portalRole: e.target.value as PortalRole })} className={inputClass}><option value="employee">{u.employee}</option><option value="supervisor">{u.supervisorLabel}</option><option value="manager">{localizedCopy[language].manager}</option></select></EditorField>
+              <EditorField label={u.supervisorLabel}><select value={editor.supervisorEmployeeId} onChange={(e) => onChange({ ...editor, supervisorEmployeeId: e.target.value })} className={inputClass}><option value="">{u.notAssigned}</option>{supervisors.filter((s) => s.id !== editor.id).map((s) => <option key={s.id} value={s.id}>{s.employee_code} — {s.first_name} {s.surname}</option>)}</select></EditorField>
             </div>
 
             <div className="border-t border-slate-200 p-5">
-              <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">Skills / qualifications</p>
+              <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">{u.skillsQualifications}</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {options.skills.map((skill) => {
                   const checked = editor.skillCodes.includes(skill.code);
@@ -1804,8 +2122,8 @@ function EmployeeManagementPanel({
             </div>
 
             <div className="flex justify-end gap-3 border-t border-slate-300 bg-slate-50 p-5">
-              <button onClick={onClose} className="border border-slate-300 bg-white px-5 py-3 text-sm font-black uppercase">Cancel</button>
-              <button disabled={busy || !editor.employeeCode || !editor.firstName || !editor.surname} onClick={onSave} className="inline-flex items-center gap-2 bg-blue-600 px-5 py-3 text-sm font-black uppercase text-white hover:bg-blue-500 disabled:opacity-50">{busy ? <LoaderCircle className="animate-spin" size={17}/> : <Check size={17}/>} Save employee</button>
+              <button onClick={onClose} className="border border-slate-300 bg-white px-5 py-3 text-sm font-black uppercase">{u.cancel}</button>
+              <button disabled={busy || !editor.employeeCode || !editor.firstName || !editor.surname} onClick={onSave} className="inline-flex items-center gap-2 bg-blue-600 px-5 py-3 text-sm font-black uppercase text-white hover:bg-blue-500 disabled:opacity-50">{busy ? <LoaderCircle className="animate-spin" size={17}/> : <Check size={17}/>} {u.saveEmployee}</button>
             </div>
           </div>
         </div>
@@ -1819,6 +2137,7 @@ function EditorField({ label, children }: { label: string; children: ReactNode }
 }
 
 function AttendanceBoard({
+  language,
   title,
   employees,
   absences,
@@ -1832,6 +2151,7 @@ function AttendanceBoard({
   onMarkAbsent,
   onReclassify,
 }: {
+  language: AppLanguage;
   title: string;
   employees: Employee[];
   absences: AbsenceRow[];
@@ -1845,6 +2165,7 @@ function AttendanceBoard({
   onMarkAbsent: () => void;
   onReclassify: (id: string, classification: AbsenceClassification) => void;
 }) {
+  const u = uiCopy[language];
   const today = isoDate(new Date());
   const todayAbsences = absences.filter((item) => item.absence_date === today);
   const todayLeave = requests.filter((request) => request.status === "approved" && today >= request.startDate && today <= request.endDate);
@@ -1902,20 +2223,20 @@ function AttendanceBoard({
       <div className="border-b border-slate-300 bg-slate-950 p-5 text-white">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">Attendance control</p>
+            <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">{u.attendanceControl}</p>
             <h2 className="mt-1 text-2xl font-black uppercase">{title}</h2>
           </div>
           <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="border border-slate-700 bg-slate-900 px-4 py-2"><p className="text-xl font-black">{employees.length}</p><p className="text-[10px] font-black uppercase text-slate-400">Team</p></div>
-            <div className="border border-slate-700 bg-slate-900 px-4 py-2"><p className="text-xl font-black text-amber-400">{todayLeave.length}</p><p className="text-[10px] font-black uppercase text-slate-400">On leave</p></div>
-            <div className="border border-slate-700 bg-slate-900 px-4 py-2"><p className="text-xl font-black text-red-400">{todayAbsences.length}</p><p className="text-[10px] font-black uppercase text-slate-400">Absent</p></div>
+            <div className="border border-slate-700 bg-slate-900 px-4 py-2"><p className="text-xl font-black">{employees.length}</p><p className="text-[10px] font-black uppercase text-slate-400">{u.team}</p></div>
+            <div className="border border-slate-700 bg-slate-900 px-4 py-2"><p className="text-xl font-black text-amber-400">{todayLeave.length}</p><p className="text-[10px] font-black uppercase text-slate-400">{u.onLeave}</p></div>
+            <div className="border border-slate-700 bg-slate-900 px-4 py-2"><p className="text-xl font-black text-red-400">{todayAbsences.length}</p><p className="text-[10px] font-black uppercase text-slate-400">{u.absent}</p></div>
           </div>
         </div>
       </div>
 
       <div className="grid gap-4 border-b border-slate-200 bg-slate-50 p-5 lg:grid-cols-[1fr_220px_auto]">
         <label className="relative">
-          <span className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-500">Employee</span>
+          <span className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-500">{u.employee}</span>
           <div className="relative">
             <Search size={17} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -1924,7 +2245,7 @@ function AttendanceBoard({
               onChange={(event) => changeEmployeeSearch(event.target.value)}
               onFocus={() => setEmployeePickerOpen(true)}
               onBlur={() => window.setTimeout(() => setEmployeePickerOpen(false), 150)}
-              placeholder="Type GCN code, name or department..."
+              placeholder={u.employeeSearchPlaceholder}
               autoComplete="off"
               className={`${inputClass} pl-11 pr-10`}
             />
@@ -1948,7 +2269,7 @@ function AttendanceBoard({
           {employeePickerOpen && !selectedEmployee && (
             <div className="absolute z-50 mt-1 max-h-72 w-full overflow-auto border border-[#d8c9b9] bg-white shadow-2xl">
               {filteredEmployees.length === 0 ? (
-                <div className="px-4 py-5 text-sm font-semibold text-slate-400">No employee found.</div>
+                <div className="px-4 py-5 text-sm font-semibold text-slate-400">{u.noEmployeeFound}</div>
               ) : (
                 filteredEmployees.map((employee) => (
                   <button
@@ -1970,28 +2291,28 @@ function AttendanceBoard({
           )}
         </label>
         <label>
-          <span className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-500">Absence date</span>
+          <span className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-500">{u.absenceDate}</span>
           <input type="date" value={absenceDate} onChange={(e) => onDateChange(e.target.value)} className={inputClass} />
         </label>
         <div className="flex items-end">
           <button type="button" disabled={!selectedEmployeeId || !absenceDate || busyId === "new"} onClick={onMarkAbsent} className="h-[52px] w-full bg-red-600 px-5 font-black uppercase text-white hover:bg-red-700 disabled:opacity-50 lg:w-auto">
-            {busyId === "new" ? "Saving..." : "Mark Absent"}
+            {busyId === "new" ? u.saving : u.markAbsent}
           </button>
         </div>
       </div>
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[900px] border-collapse">
-          <thead><tr className="bg-slate-200 text-left font-mono text-xs font-black uppercase tracking-[0.12em] text-slate-600"><th className="px-5 py-3">Employee</th><th className="px-5 py-3">Department</th><th className="px-5 py-3">Date</th><th className="px-5 py-3">Classification</th>{isManager && <th className="px-5 py-3">Manager action</th>}</tr></thead>
+          <thead><tr className="bg-slate-200 text-left font-mono text-xs font-black uppercase tracking-[0.12em] text-slate-600"><th className="px-5 py-3">{u.employee}</th><th className="px-5 py-3">{localizedCopy[language].department}</th><th className="px-5 py-3">Date</th><th className="px-5 py-3">{u.classification}</th>{isManager && <th className="px-5 py-3">{u.managerAction}</th>}</tr></thead>
           <tbody>
-            {absences.length === 0 ? <tr><td colSpan={isManager ? 5 : 4} className="px-5 py-8 text-center font-bold text-slate-400">No absences recorded in this period.</td></tr> :
+            {absences.length === 0 ? <tr><td colSpan={isManager ? 5 : 4} className="px-5 py-8 text-center font-bold text-slate-400">{u.noAbsences}</td></tr> :
               absences.slice(0, 30).map((absence) => (
                 <tr key={absence.id} className="border-t border-slate-200">
                   <td className="px-5 py-4"><p className="font-black text-slate-950">{absence.employee_name}</p><p className="font-mono text-xs text-slate-500">{absence.employee_code}</p></td>
                   <td className="px-5 py-4 font-semibold text-slate-600">{absence.department}</td>
                   <td className="px-5 py-4 font-semibold">{formatDate(absence.absence_date)}</td>
                   <td className="px-5 py-4"><span className={`inline-flex px-3 py-1.5 text-xs font-black ring-1 ${classificationStyle[absence.classification]}`}>{absence.classification.replace("_"," ")}</span></td>
-                  {isManager && <td className="px-5 py-4"><select disabled={busyId === absence.id} value={absence.classification} onChange={(e) => onReclassify(absence.id, e.target.value as AbsenceClassification)} className="border border-slate-300 bg-white px-3 py-2 text-sm font-black"><option value="UNJUSTIFIED">Unjustified</option><option value="SICK">Sick Leave</option><option value="ANNUAL">Annual Leave</option><option value="COMPASSIONATE">Compassionate Leave</option></select></td>}
+                  {isManager && <td className="px-5 py-4"><select disabled={busyId === absence.id} value={absence.classification} onChange={(e) => onReclassify(absence.id, e.target.value as AbsenceClassification)} className="border border-slate-300 bg-white px-3 py-2 text-sm font-black"><option value="UNJUSTIFIED">{u.unjustified}</option><option value="SICK">{u.sickLeave}</option><option value="ANNUAL">{u.annualLeave}</option><option value="COMPASSIONATE">{u.compassionateLeave}</option></select></td>}
                 </tr>
               ))
             }
@@ -2006,7 +2327,8 @@ function ApprovalDashboard({ eyebrow, title, stats, employees, leaveRequests, ov
   return <div className="space-y-6"><section className="border border-[#3a2e27] bg-[#171310] p-6 text-white shadow-2xl shadow-black/10 sm:p-8"><SectionHeaderDark eyebrow={eyebrow} title={title} icon={LayoutDashboard} /><div className="mt-7 grid gap-px bg-slate-700 sm:grid-cols-2 xl:grid-cols-4">{stats.map(({ label, value, icon: Icon }) => <article key={label} className="bg-[#211914] p-5"><div className="flex items-center justify-between"><span className="grid h-10 w-10 place-items-center border border-slate-700 bg-slate-950 text-amber-400"><Icon size={19} /></span><span className="text-3xl font-black">{value}</span></div><p className="mt-5 font-mono text-xs font-black uppercase tracking-[0.12em] text-slate-400">{label}</p></article>)}</div></section><RequestTable title={t.annualLeaveTab} employees={employees} requests={leaveRequests} language={language} t={t} savingRequestId={savingRequestId} onDecision={onLeaveDecision} onReassess={onReassess} showManpower={showManpower} /><OvertimeTable title={t.overtimeTab} employees={employees} requests={overtimeRequests} language={language} t={t} savingRequestId={savingRequestId} onDecision={onOvertimeDecision} /></div>;
 }
 
-function RequestTable({ title, employees, requests, language, t, savingRequestId, onDecision, onReassess, showManpower }: { title: string; employees: Employee[]; requests: LeaveWithManpower[]; language: Language; t: (typeof copy)[Language]; savingRequestId: string | null; onDecision: (id: string, decision: Decision) => void; onReassess: (id: string) => void; showManpower: boolean }) {
+function RequestTable({ title, employees, requests, language, t, savingRequestId, onDecision, onReassess, showManpower }: { title: string; employees: Employee[]; requests: LeaveWithManpower[]; language: AppLanguage; t: (typeof localizedCopy)[AppLanguage]; savingRequestId: string | null; onDecision: (id: string, decision: Decision) => void; onReassess: (id: string) => void; showManpower: boolean }) {
+  const u = uiCopy[language];
   const style: Record<ManpowerStatus,string> = {
     GREEN:"border-emerald-300 bg-emerald-50 text-emerald-800",
     ORANGE:"border-amber-300 bg-amber-50 text-amber-900",
@@ -2057,7 +2379,7 @@ function RequestTable({ title, employees, requests, language, t, savingRequestId
                       <div className="flex justify-between gap-3">
                         <div>
                           <p className="font-mono text-xs font-black">
-                            MANPOWER · {request.manpowerDetails?.mode ?? "—"} SEASON
+                            {u.manpower} · {request.manpowerDetails?.mode ?? "—"} {u.season}
                           </p>
                           <p className="mt-1 text-lg font-black">{request.manpowerStatus}</p>
                         </div>
@@ -2101,7 +2423,7 @@ function RequestTable({ title, employees, requests, language, t, savingRequestId
   );
 }
 
-function OvertimeTable({ title, employees, requests, language, t, savingRequestId, onDecision }: { title: string; employees: Employee[]; requests: OvertimeRequest[]; language: Language; t: (typeof copy)[Language]; savingRequestId: string | null; onDecision: (id: string, decision: Decision) => void }) {
+function OvertimeTable({ title, employees, requests, language, t, savingRequestId, onDecision }: { title: string; employees: Employee[]; requests: OvertimeRequest[]; language: AppLanguage; t: (typeof localizedCopy)[AppLanguage]; savingRequestId: string | null; onDecision: (id: string, decision: Decision) => void }) {
   const a = authCopy[language];
   return <section className="overflow-hidden border border-slate-400 bg-white shadow-xl"><div className="border-b border-slate-300 bg-slate-200 p-5"><p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-blue-700">{t.pendingRequests}</p><h2 className="mt-1 text-2xl font-black uppercase text-slate-950">{title}</h2></div>{requests.length === 0 ? <div className="p-8"><EmptyState text={t.noPending} /></div> : <div className="overflow-x-auto"><table className="w-full min-w-[1100px] border-collapse"><thead><tr className="bg-slate-900 text-left font-mono text-xs font-black uppercase tracking-[0.12em] text-slate-300"><th className="px-5 py-4">{t.employee}</th><th className="px-5 py-4">{t.department}</th><th className="px-5 py-4">{t.overtimeDate}</th><th className="px-5 py-4">{t.period}</th><th className="px-5 py-4">{t.hours}</th><th className="px-5 py-4">{t.status}</th><th className="px-5 py-4">{a.actions}</th></tr></thead><tbody>{requests.map((request) => { const employee = employees.find((item) => item.id === request.employeeId); if (!employee) return null; return <tr key={request.id} className="border-t border-slate-200 hover:bg-slate-50"><td className="px-5 py-4"><EmployeeCell employee={employee} /></td><td className="px-5 py-4 font-semibold text-slate-600">{employee.department}</td><td className="px-5 py-4 font-semibold text-slate-600">{formatDate(request.overtimeDate)}</td><td className="px-5 py-4 font-semibold text-slate-600">{request.startTime} → {request.endTime}</td><td className="px-5 py-4 font-black">{request.totalHours}</td><td className="px-5 py-4"><StatusBadge status={request.status} language={language} /></td><td className="px-5 py-4"><DecisionButtons busy={savingRequestId === request.id} approve={() => onDecision(request.id, "approve")} reject={() => onDecision(request.id, "reject")} language={language} /></td></tr>; })}</tbody></table></div>}</section>;
 }
@@ -2120,9 +2442,9 @@ function CalculationTile({ label, value, danger = false }: { label: string; valu
 function InfoNote({ text }: { text: string }) { return <div className="flex items-start gap-3 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600"><Clock3 className="mt-0.5 shrink-0 text-[#b87333]" size={18} /><p>{text}</p></div>; }
 function SubmitButton({ saving, label }: { saving: boolean; label: string }) { return <button disabled={saving} type="submit" className="inline-flex min-w-44 items-center justify-center gap-2 rounded-2xl bg-[#d99a55] px-5 py-3.5 font-black text-[#171310] shadow-lg shadow-[#d99a55]/20 transition hover:bg-[#c88843] disabled:cursor-wait disabled:opacity-60">{saving && <LoaderCircle className="animate-spin" size={18} />}{label}</button>; }
 function HistoryCard({ title, icon, emptyText, children }: { title: string; icon: LucideIcon; emptyText: string; children: React.ReactNode }) { const items = Array.isArray(children) ? children.filter(Boolean) : children; const empty = Array.isArray(items) ? items.length === 0 : !items; return <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-soft sm:p-8"><SectionHeader eyebrow="History" title={title} icon={icon} /><div className="mt-7 space-y-3">{empty ? <EmptyState text={emptyText} /> : items}</div></section>; }
-function StatusBadge({ status, language }: { status: RequestStatus; language: Language }) { return <span className={`inline-flex rounded-full px-3 py-1.5 text-xs font-black ring-1 ${statusStyles[status]}`}>{statusLabel(status, language)}</span>; }
+function StatusBadge({ status, language }: { status: RequestStatus; language: AppLanguage }) { return <span className={`inline-flex rounded-full px-3 py-1.5 text-xs font-black ring-1 ${statusStyles[status]}`}>{statusLabel(status, language)}</span>; }
 function EmployeeCell({ employee }: { employee: Employee }) { return <div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center border border-slate-700 bg-slate-900 text-xs font-black text-white">{initials(employee)}</span><div><p className="font-black text-slate-950">{employeeName(employee)}</p><p className="font-mono text-xs text-slate-500">{employee.employeeCode}</p><p className="max-w-[260px] truncate text-xs font-semibold text-slate-600">{employee.positionTitle}</p></div></div>; }
 function EmptyState({ text }: { text: string }) { return <div className="grid min-h-40 place-items-center border border-dashed border-slate-300 bg-slate-50 px-6 text-center"><div><span className="mx-auto grid h-12 w-12 place-items-center bg-white text-slate-400 shadow-sm"><Clock3 size={22} /></span><p className="mt-3 font-bold text-slate-500">{text}</p></div></div>; }
 function BoardStat({ label, value, accent = "text-white", last = false }: { label: string; value: number; accent?: string; last?: boolean }) { return <div className={`${last ? "" : "border-r"} border-slate-700 px-3 py-2`}><p className="font-mono text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">{label}</p><p className={`text-xl font-black leading-tight ${accent}`}>{value}</p></div>; }
 function LegendBox({ className, label }: { className: string; label: string }) { return <span className="flex items-center gap-1.5"><span className={`h-3 w-5 border ${className}`} />{label}</span>; }
-function DecisionButtons({ busy, approve, reject, language }: { busy: boolean; approve: () => void; reject: () => void; language: Language }) { const a = authCopy[language]; return <div className="flex gap-2">{busy ? <span className="grid h-9 w-24 place-items-center border border-slate-300 bg-slate-100"><LoaderCircle className="animate-spin" size={17} /></span> : <><button onClick={approve} className="inline-flex h-9 items-center gap-1 border border-emerald-600 bg-emerald-600 px-3 text-xs font-black uppercase text-white hover:bg-emerald-700"><Check size={15} />{a.approve}</button><button onClick={reject} className="inline-flex h-9 items-center gap-1 border border-red-600 bg-white px-3 text-xs font-black uppercase text-red-700 hover:bg-red-50"><X size={15} />{a.reject}</button></>}</div>; }
+function DecisionButtons({ busy, approve, reject, language }: { busy: boolean; approve: () => void; reject: () => void; language: AppLanguage }) { const a = authCopy[language]; return <div className="flex gap-2">{busy ? <span className="grid h-9 w-24 place-items-center border border-slate-300 bg-slate-100"><LoaderCircle className="animate-spin" size={17} /></span> : <><button onClick={approve} className="inline-flex h-9 items-center gap-1 border border-emerald-600 bg-emerald-600 px-3 text-xs font-black uppercase text-white hover:bg-emerald-700"><Check size={15} />{a.approve}</button><button onClick={reject} className="inline-flex h-9 items-center gap-1 border border-red-600 bg-white px-3 text-xs font-black uppercase text-red-700 hover:bg-red-50"><X size={15} />{a.reject}</button></>}</div>; }
