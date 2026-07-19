@@ -31,7 +31,6 @@ import type { LucideIcon } from "lucide-react";
 import { Fragment, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
-  calculateLeaveDays,
   calculateOvertimeHours,
   formatDate,
   isoDate,
@@ -145,6 +144,15 @@ interface AbsenceRow {
   manager_comment: string | null;
   created_at: string;
   updated_at: string;
+}
+
+
+interface PublicHolidayRow {
+  holiday_date: string;
+  holiday_name: string;
+  holiday_kind: "STATUTORY" | "OBSERVED" | "DECLARED";
+  observed_for: string | null;
+  source_reference: string | null;
 }
 
 interface AdminEmployeeRow {
@@ -532,6 +540,9 @@ const uiCopyEn = {
   noRowsForPeriod: "No records for this period.",
   reportGenerated: "Report generated",
   reportPeriodInvalid: "The end date must be on or after the start date.",
+  publicHoliday: "Public holiday",
+  publicHolidaysExcluded: "Namibian public holidays in the selected period do not reduce annual leave.",
+  excludedFromLeave: "excluded from leave",
 };
 
 const uiCopy = {
@@ -665,6 +676,9 @@ const uiCopy = {
     noRowsForPeriod: "Geen rekords vir hierdie tydperk nie.",
     reportGenerated: "Verslag gegenereer",
     reportPeriodInvalid: "Die einddatum moet op of ná die begindatum wees.",
+    publicHoliday: "Openbare vakansiedag",
+    publicHolidaysExcluded: "Namibiese openbare vakansiedae in die gekose tydperk verminder nie jaarlikse verlof nie.",
+    excludedFromLeave: "uitgesluit van verlof",
   },
 } as const;
 
@@ -792,6 +806,29 @@ function isTodayWithin(request: LeaveRequest): boolean {
   return request.status === "approved" && today >= request.startDate && today <= request.endDate;
 }
 
+
+function calculateLeaveDaysWithHolidays(
+  startDate: string,
+  endDate: string,
+  publicHolidays: PublicHolidayRow[],
+): number {
+  if (!startDate || !endDate || endDate < startDate) return 0;
+
+  const holidayDates = new Set(publicHolidays.map((holiday) => holiday.holiday_date));
+  const current = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  let days = 0;
+
+  while (current <= end) {
+    const date = isoDate(current);
+    const isSunday = current.getDay() === 0;
+    if (!isSunday && !holidayDates.has(date)) days += 1;
+    current.setDate(current.getDate() + 1);
+  }
+
+  return days;
+}
+
 function errorText(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "object" && error !== null && "message" in error) {
@@ -836,6 +873,7 @@ export function LeaveManagementApp() {
   const [employeeAdminBusy, setEmployeeAdminBusy] = useState(false);
   const [newAccessCode, setNewAccessCode] = useState<{ employeeCode: string; code: string } | null>(null);
   const [overtimeRequests, setOvertimeRequests] = useState<OvertimeRequest[]>([]);
+  const [publicHolidays, setPublicHolidays] = useState<PublicHolidayRow[]>([]);
   const [department, setDepartment] = useState("all");
   const [calendarAnchor, setCalendarAnchor] = useState(isoDate(new Date()));
   const [booting, setBooting] = useState(true);
@@ -873,6 +911,7 @@ export function LeaveManagementApp() {
     setEmployees([]);
     setRequests([]);
     setOvertimeRequests([]);
+    setPublicHolidays([]);
     setReportData(null);
     setManagedEmployees([]);
     setEmployeeEditor(null);
@@ -888,7 +927,7 @@ export function LeaveManagementApp() {
       setLoading(true);
       setDatabaseError(null);
       try {
-        const [employeeResult, leaveResult, overtimeResult, factoryResult, absenceResult, adminEmployeeResult, adminOptionsResult] = await Promise.all([
+        const [employeeResult, leaveResult, overtimeResult, factoryResult, absenceResult, holidayResult, adminEmployeeResult, adminOptionsResult] = await Promise.all([
           supabase.rpc("portal_employees_v2", { p_token: token }),
           supabase.rpc("portal_leave_requests", { p_token: token }),
           supabase.rpc("portal_overtime_requests", { p_token: token }),
@@ -898,15 +937,22 @@ export function LeaveManagementApp() {
             p_date_from: isoDate(new Date(new Date().getFullYear() - 1, 0, 1)),
             p_date_to: isoDate(new Date(new Date().getFullYear() + 1, 11, 31)),
           }),
+          supabase.rpc("portal_public_holidays", {
+            p_token: token,
+            p_date_from: isoDate(new Date(new Date().getFullYear() - 1, 0, 1)),
+            p_date_to: isoDate(new Date(new Date().getFullYear() + 9, 11, 31)),
+          }),
           supabase.rpc("portal_employee_admin_list", { p_token: token }),
           supabase.rpc("portal_employee_admin_options", { p_token: token }),
         ]);
         if (employeeResult.error) throw employeeResult.error;
         if (leaveResult.error) throw leaveResult.error;
         if (overtimeResult.error) throw overtimeResult.error;
+        if (holidayResult.error) throw holidayResult.error;
         setEmployees(((employeeResult.data ?? []) as EmployeeRow[]).map(mapEmployee));
         setRequests(((leaveResult.data ?? []) as LeaveRow[]).map(mapLeave));
         setOvertimeRequests(((overtimeResult.data ?? []) as OvertimeRow[]).map(mapOvertime));
+        setPublicHolidays((holidayResult.data ?? []) as PublicHolidayRow[]);
         if (!factoryResult.error) setFactoryMode((((factoryResult.data ?? []) as FactoryModeRow[])[0]) ?? null);
         if (!absenceResult.error) setAbsences((absenceResult.data ?? []) as AbsenceRow[]);
         if (!adminEmployeeResult.error) setManagedEmployees((adminEmployeeResult.data ?? []) as AdminEmployeeRow[]);
@@ -988,8 +1034,22 @@ export function LeaveManagementApp() {
   );
 
   const requestedDays = useMemo(
-    () => Math.max(0, calculateLeaveDays(startDate, endDate)),
-    [startDate, endDate],
+    () => Math.max(0, calculateLeaveDaysWithHolidays(startDate, endDate, publicHolidays)),
+    [endDate, publicHolidays, startDate],
+  );
+
+  const selectedLeaveHolidays = useMemo(
+    () =>
+      publicHolidays.filter((holiday) => {
+        if (!startDate || !endDate) return false;
+        const date = new Date(`${holiday.holiday_date}T00:00:00`);
+        return (
+          holiday.holiday_date >= startDate
+          && holiday.holiday_date <= endDate
+          && date.getDay() !== 0
+        );
+      }),
+    [endDate, publicHolidays, startDate],
   );
 
   const calculatedOvertime = useMemo(
@@ -1042,7 +1102,7 @@ export function LeaveManagementApp() {
   async function submitLeave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!sessionToken || !supabase || !currentEmployee) return;
-    const days = calculateLeaveDays(startDate, endDate);
+    const days = requestedDays;
     if (days <= 0) {
       setMessage({ kind: "error", text: t.invalidDates });
       return;
@@ -1402,6 +1462,7 @@ export function LeaveManagementApp() {
               setEndDate={setEndDate}
               setComment={setComment}
               requestedDays={requestedDays}
+              leaveHolidays={selectedLeaveHolidays}
               submitLeave={submitLeave}
               overtimeDate={overtimeDate}
               overtimeStart={overtimeStart}
@@ -1444,6 +1505,7 @@ export function LeaveManagementApp() {
               employees={employees}
               requests={requests}
               absences={absences}
+              publicHolidays={publicHolidays}
               department={department}
               setDepartment={setDepartment}
               anchor={calendarAnchor}
@@ -2013,6 +2075,7 @@ interface EmployeeViewProps {
   setEndDate: (value: string) => void;
   setComment: (value: string) => void;
   requestedDays: number;
+  leaveHolidays: PublicHolidayRow[];
   submitLeave: (event: FormEvent<HTMLFormElement>) => void;
   overtimeDate: string;
   overtimeStart: string;
@@ -2032,7 +2095,7 @@ interface EmployeeViewProps {
 }
 
 function EmployeeView(props: EmployeeViewProps) {
-  const { language, t, employee, module, setModule, startDate, endDate, comment, setStartDate, setEndDate, setComment, requestedDays, submitLeave, overtimeDate, overtimeStart, overtimeEnd, breakMinutes, overtimeReason, setOvertimeDate, setOvertimeStart, setOvertimeEnd, setBreakMinutes, setOvertimeReason, calculatedOvertime, submitOvertime, saving, employeeRequests, employeeOvertime } = props;
+  const { language, t, employee, module, setModule, startDate, endDate, comment, setStartDate, setEndDate, setComment, requestedDays, leaveHolidays, submitLeave, overtimeDate, overtimeStart, overtimeEnd, breakMinutes, overtimeReason, setOvertimeDate, setOvertimeStart, setOvertimeEnd, setBreakMinutes, setOvertimeReason, calculatedOvertime, submitOvertime, saving, employeeRequests, employeeOvertime } = props;
   const balanceAfter = employee.balance - requestedDays;
   const u = uiCopy[language];
 
@@ -2075,7 +2138,21 @@ function EmployeeView(props: EmployeeViewProps) {
                 <CalculationTile label={t.requestedDays} value={`${requestedDays} ${t.days}`} />
                 <CalculationTile label={t.balanceAfter} value={`${balanceAfter} ${t.days}`} danger={balanceAfter < 0} />
               </div>
-              <InfoNote text={t.leaveRule} />
+              {leaveHolidays.length > 0 && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.12em] text-amber-800">
+                    {u.publicHoliday} · {u.excludedFromLeave}
+                  </p>
+                  <div className="mt-2 space-y-1">
+                    {leaveHolidays.map((holiday) => (
+                      <p key={holiday.holiday_date} className="text-sm font-semibold text-amber-950">
+                        {formatDate(holiday.holiday_date)} — {holiday.holiday_name}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <InfoNote text={`${t.leaveRule} ${u.publicHolidaysExcluded}`} />
               <SubmitButton saving={saving} label={t.submitRequest} />
             </form>
           </section>
@@ -2134,7 +2211,7 @@ function EmployeeView(props: EmployeeViewProps) {
   );
 }
 
-function CalendarView({ t, language, employees, requests, absences, department, setDepartment, anchor, setAnchor }: { t: (typeof localizedCopy)[AppLanguage]; language: AppLanguage; employees: Employee[]; requests: LeaveWithManpower[]; absences: AbsenceRow[]; department: string; setDepartment: (value: string) => void; anchor: string; setAnchor: (value: string) => void }) {
+function CalendarView({ t, language, employees, requests, absences, publicHolidays, department, setDepartment, anchor, setAnchor }: { t: (typeof localizedCopy)[AppLanguage]; language: AppLanguage; employees: Employee[]; requests: LeaveWithManpower[]; absences: AbsenceRow[]; publicHolidays: PublicHolidayRow[]; department: string; setDepartment: (value: string) => void; anchor: string; setAnchor: (value: string) => void }) {
   const [scale, setScale] = useState<CalendarScale>("week");
   const a = authCopy[language];
   const u = uiCopy[language];
@@ -2157,6 +2234,10 @@ function CalendarView({ t, language, employees, requests, absences, department, 
     return groups;
   }, {});
   const departmentEntries = Object.entries(groupedEmployees).sort(([left], [right]) => left.localeCompare(right));
+  function publicHolidayOnDate(date: string) {
+    return publicHolidays.find((holiday) => holiday.holiday_date === date) ?? null;
+  }
+
   function absenceOnDate(employeeId: string, date: string) {
     return absences.find((absence) => absence.employee_id === employeeId && absence.absence_date === date) ?? null;
   }
@@ -2272,6 +2353,7 @@ function CalendarView({ t, language, employees, requests, absences, department, 
           <LegendBox className="border-red-500 bg-red-600" label={`UA — ${u.unjustified}`} />
           <LegendBox className="border-amber-400 bg-amber-300" label="PS — Pending supervisor" />
           <LegendBox className="border-violet-400 bg-violet-600" label="PM — Pending manager" />
+          <LegendBox className="border-amber-600 bg-amber-700" label={`PH — ${u.publicHoliday}`} />
           <LegendBox className="border-slate-500 bg-slate-700" label={`OFF — ${u.sunday}`} />
         </div>
         <div className="max-h-[78vh] overflow-auto">
@@ -2280,10 +2362,31 @@ function CalendarView({ t, language, employees, requests, absences, department, 
               <tr className="bg-slate-900 text-white">
                 <th style={{ minWidth: employeeColumnWidth, width: employeeColumnWidth }} className="sticky left-0 z-40 border-r border-slate-600 bg-slate-900 px-3 py-2 text-left font-mono text-[10px] font-black uppercase tracking-[0.1em]">{u.employeeDepartment}</th>
                 {rangeDates.map((date) => {
-                  const away = visibleEmployees.filter((employee) => calendarState(employee.id, isoDate(date)).kind !== "working").length;
+                  const dateKey = isoDate(date);
+                  const away = visibleEmployees.filter((employee) => calendarState(employee.id, dateKey).kind !== "working").length;
+                  const holiday = publicHolidayOnDate(dateKey);
                   const saturday = date.getDay() === 6;
                   const sunday = date.getDay() === 0;
-                  return <th key={isoDate(date)} style={{ minWidth: cellWidth }} className={`border-r border-slate-700 px-0.5 py-1 text-center ${saturday ? "bg-amber-950" : sunday ? "bg-slate-800" : ""}`}><p className="font-mono text-[8px] font-black uppercase text-slate-400">{new Intl.DateTimeFormat("en-GB", { weekday: scale === "month" ? "narrow" : "short" }).format(date)}</p><p className={`${scale === "month" ? "text-sm" : "text-base"} leading-none font-black`}>{new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: scale === "month" ? undefined : "short" }).format(date)}</p><p className="mt-0.5 font-mono text-[7px] font-black uppercase text-amber-400">{away} {u.away}</p></th>;
+                  return (
+                    <th
+                      key={dateKey}
+                      title={holiday?.holiday_name}
+                      style={{ minWidth: cellWidth }}
+                      className={`border-r border-slate-700 px-0.5 py-1 text-center ${
+                        holiday ? "bg-amber-800" : saturday ? "bg-amber-950" : sunday ? "bg-slate-800" : ""
+                      }`}
+                    >
+                      <p className="font-mono text-[8px] font-black uppercase text-slate-300">
+                        {new Intl.DateTimeFormat("en-GB", { weekday: scale === "month" ? "narrow" : "short" }).format(date)}
+                      </p>
+                      <p className={`${scale === "month" ? "text-sm" : "text-base"} leading-none font-black`}>
+                        {new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: scale === "month" ? undefined : "short" }).format(date)}
+                      </p>
+                      <p className="mt-0.5 font-mono text-[7px] font-black uppercase text-amber-200">
+                        {holiday ? "PH" : `${away} ${u.away}`}
+                      </p>
+                    </th>
+                  );
                 })}
               </tr>
             </thead>
