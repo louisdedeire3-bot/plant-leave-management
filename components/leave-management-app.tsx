@@ -9,6 +9,8 @@ import {
   Eye,
   EyeOff,
   Factory,
+  FileSpreadsheet,
+  Download,
   KeyRound,
   Languages,
   LayoutDashboard,
@@ -49,6 +51,7 @@ import type {
 } from "@/lib/types";
 
 type AppLanguage = Language | "af";
+type AppView = RoleView | "reports";
 type PortalRole = "employee" | "supervisor" | "manager";
 type ManpowerStatus = "GREEN" | "ORANGE" | "RED" | "NOT_ASSESSED";
 type CalendarScale = "day" | "week" | "month";
@@ -189,6 +192,85 @@ interface OvertimeRow {
   reason: string | null;
   status: string;
   created_at: string;
+}
+
+
+interface ManagementReportSummary {
+  active_employees: number;
+  annual_leave_days: number;
+  compassionate_leave_days: number;
+  sick_days: number;
+  unjustified_days: number;
+  approved_overtime_hours: number;
+  pending_overtime_hours: number;
+  employees_with_approved_overtime: number;
+  pending_leave_requests: number;
+}
+
+interface ManagementReportLeaveRow {
+  id: string;
+  employee_id: string;
+  employee_code: string;
+  employee_name: string;
+  department: string;
+  start_date: string;
+  end_date: string;
+  period_start_date: string;
+  period_end_date: string;
+  period_days: number;
+  requested_days: number;
+  leave_type: string;
+  status: string;
+  comment: string;
+  created_at: string;
+  supervisor_approved_at: string | null;
+  manager_approved_at: string | null;
+  rejected_at: string | null;
+  rejection_reason: string;
+}
+
+interface ManagementReportAbsenceRow {
+  id: string;
+  employee_id: string;
+  employee_code: string;
+  employee_name: string;
+  department: string;
+  absence_date: string;
+  classification: AbsenceClassification;
+  manager_comment: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ManagementReportOvertimeRow {
+  id: string;
+  employee_id: string;
+  employee_code: string;
+  employee_name: string;
+  department: string;
+  overtime_date: string;
+  start_time: string;
+  end_time: string;
+  break_minutes: number;
+  total_hours: number;
+  reason: string;
+  status: string;
+  created_at: string;
+  supervisor_approved_at: string | null;
+  manager_approved_at: string | null;
+  rejected_at: string | null;
+  rejection_reason: string;
+}
+
+interface ManagementReportData {
+  date_from: string;
+  date_to: string;
+  department: string;
+  generated_at: string;
+  summary: ManagementReportSummary;
+  leaves: ManagementReportLeaveRow[];
+  absences: ManagementReportAbsenceRow[];
+  overtime: ManagementReportOvertimeRow[];
 }
 
 const authCopy = {
@@ -425,6 +507,30 @@ const uiCopyEn = {
   fines: "Fines",
   maintenance: "Maintenance",
   supervisorLabel: "Supervisor",
+  reports: "Reports",
+  customPeriodReport: "Custom period report",
+  customPeriodIntro: "Choose any start and end date, for example 15 August to 31 August.",
+  dateFrom: "From",
+  dateTo: "To",
+  generateReport: "Generate report",
+  exportCsv: "Export CSV",
+  selectedPeriod: "Selected period",
+  reportDepartment: "Department",
+  annualLeaveDays: "Annual leave days",
+  compassionateDays: "Compassionate days",
+  sickDays: "Sick days",
+  unjustifiedDays: "Unjustified days",
+  approvedOvertimeHours: "Approved overtime hours",
+  pendingOvertimeHours: "Pending overtime hours",
+  employeesWithApprovedOvertime: "Employees with overtime",
+  pendingLeaveRequests: "Pending leave requests",
+  leaveDetails: "Leave details",
+  absenceDetails: "Absence details",
+  overtimeDetails: "Overtime details",
+  noReportData: "Choose a period and generate the report.",
+  noRowsForPeriod: "No records for this period.",
+  reportGenerated: "Report generated",
+  reportPeriodInvalid: "The end date must be on or after the start date.",
 };
 
 const uiCopy = {
@@ -534,6 +640,30 @@ const uiCopy = {
     fines: "Fynmateriaal",
     maintenance: "Instandhouding",
     supervisorLabel: "Toesighouer",
+    reports: "Verslae",
+    customPeriodReport: "Verslag vir pasgemaakte tydperk",
+    customPeriodIntro: "Kies enige begin- en einddatum, byvoorbeeld 15 Augustus tot 31 Augustus.",
+    dateFrom: "Van",
+    dateTo: "Tot",
+    generateReport: "Genereer verslag",
+    exportCsv: "Voer CSV uit",
+    selectedPeriod: "Gekose tydperk",
+    reportDepartment: "Afdeling",
+    annualLeaveDays: "Jaarlikse verlofdae",
+    compassionateDays: "Deernisverlofdae",
+    sickDays: "Siekdae",
+    unjustifiedDays: "Ongeregverdigde dae",
+    approvedOvertimeHours: "Goedgekeurde oortydure",
+    pendingOvertimeHours: "Hangende oortydure",
+    employeesWithApprovedOvertime: "Werknemers met oortyd",
+    pendingLeaveRequests: "Hangende verlofversoeke",
+    leaveDetails: "Verlofbesonderhede",
+    absenceDetails: "Afwesigheidsbesonderhede",
+    overtimeDetails: "Oortydbesonderhede",
+    noReportData: "Kies 'n tydperk en genereer die verslag.",
+    noRowsForPeriod: "Geen rekords vir hierdie tydperk nie.",
+    reportGenerated: "Verslag gegenereer",
+    reportPeriodInvalid: "Die einddatum moet op of ná die begindatum wees.",
   },
 } as const;
 
@@ -669,10 +799,10 @@ function errorText(error: unknown): string {
   return "Unknown database error";
 }
 
-function viewOptionsFor(profile: PortalProfile): Array<{ id: RoleView; icon: LucideIcon }> {
+function viewOptionsFor(profile: PortalProfile): Array<{ id: AppView; icon: LucideIcon }> {
   if (profile.role === "employee") return [{ id: "employee", icon: UserRound }];
   if (profile.role === "supervisor") {
-    const options: Array<{ id: RoleView; icon: LucideIcon }> = [
+    const options: Array<{ id: AppView; icon: LucideIcon }> = [
       { id: "supervisor", icon: UsersRound },
       { id: "calendar", icon: CalendarDays },
     ];
@@ -681,6 +811,7 @@ function viewOptionsFor(profile: PortalProfile): Array<{ id: RoleView; icon: Luc
   }
   return [
     { id: "manager", icon: ShieldCheck },
+    { id: "reports", icon: FileSpreadsheet },
     { id: "calendar", icon: CalendarDays },
   ];
 }
@@ -689,7 +820,7 @@ export function LeaveManagementApp() {
   const [language, setLanguage] = useState<AppLanguage>("en");
   const [profile, setProfile] = useState<PortalProfile | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
-  const [view, setView] = useState<RoleView>("employee");
+  const [view, setView] = useState<AppView>("employee");
   const [module, setModule] = useState<EmployeeModule>("leave");
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [requests, setRequests] = useState<LeaveWithManpower[]>([]);
@@ -721,6 +852,13 @@ export function LeaveManagementApp() {
   const [overtimeEnd, setOvertimeEnd] = useState("");
   const [breakMinutes, setBreakMinutes] = useState(0);
   const [overtimeReason, setOvertimeReason] = useState("");
+  const [reportDateFrom, setReportDateFrom] = useState(
+    isoDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
+  );
+  const [reportDateTo, setReportDateTo] = useState(isoDate(new Date()));
+  const [reportDepartment, setReportDepartment] = useState("all");
+  const [reportData, setReportData] = useState<ManagementReportData | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
 
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const t = localizedCopy[language];
@@ -734,6 +872,7 @@ export function LeaveManagementApp() {
     setEmployees([]);
     setRequests([]);
     setOvertimeRequests([]);
+    setReportData(null);
     setManagedEmployees([]);
     setEmployeeEditor(null);
     setNewAccessCode(null);
@@ -962,6 +1101,33 @@ export function LeaveManagementApp() {
       setMessage({ kind: "error", text: errorText(error) });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function generateManagementReport() {
+    if (!sessionToken || !supabase || profile?.role !== "manager") return;
+
+    if (!reportDateFrom || !reportDateTo || reportDateTo < reportDateFrom) {
+      setMessage({ kind: "error", text: u.reportPeriodInvalid });
+      return;
+    }
+
+    setReportLoading(true);
+    setMessage(null);
+    try {
+      const { data, error } = await supabase.rpc("portal_management_report", {
+        p_token: sessionToken,
+        p_date_from: reportDateFrom,
+        p_date_to: reportDateTo,
+        p_department: reportDepartment === "all" ? null : reportDepartment,
+      });
+      if (error) throw error;
+      setReportData(data as ManagementReportData);
+      setMessage({ kind: "success", text: u.reportGenerated });
+    } catch (error) {
+      setMessage({ kind: "error", text: errorText(error) });
+    } finally {
+      setReportLoading(false);
     }
   }
 
@@ -1205,7 +1371,7 @@ export function LeaveManagementApp() {
                 }`}
               >
                 <Icon size={18} />
-                <span>{t[id]}</span>
+                <span>{id === "reports" ? u.reports : t[id as RoleView]}</span>
               </button>
             ))}
           </nav>
@@ -1251,6 +1417,22 @@ export function LeaveManagementApp() {
               saving={saving}
               employeeRequests={employeeRequests}
               employeeOvertime={employeeOvertime}
+            />
+          )}
+
+          {view === "reports" && profile.role === "manager" && (
+            <ManagementReportView
+              language={language}
+              dateFrom={reportDateFrom}
+              dateTo={reportDateTo}
+              department={reportDepartment}
+              departments={employeeAdminOptions.departments}
+              data={reportData}
+              loading={reportLoading}
+              onDateFromChange={setReportDateFrom}
+              onDateToChange={setReportDateTo}
+              onDepartmentChange={setReportDepartment}
+              onGenerate={() => void generateManagementReport()}
             />
           )}
 
@@ -1375,6 +1557,275 @@ export function LeaveManagementApp() {
         </main>
       </div>
     </div>
+  );
+}
+
+
+function ManagementReportView({
+  language,
+  dateFrom,
+  dateTo,
+  department,
+  departments,
+  data,
+  loading,
+  onDateFromChange,
+  onDateToChange,
+  onDepartmentChange,
+  onGenerate,
+}: {
+  language: AppLanguage;
+  dateFrom: string;
+  dateTo: string;
+  department: string;
+  departments: string[];
+  data: ManagementReportData | null;
+  loading: boolean;
+  onDateFromChange: (value: string) => void;
+  onDateToChange: (value: string) => void;
+  onDepartmentChange: (value: string) => void;
+  onGenerate: () => void;
+}) {
+  const u = uiCopy[language];
+  const t = localizedCopy[language];
+
+  function csvCell(value: unknown): string {
+    const text = String(value ?? "").replace(/\r?\n/g, " ").replace(/"/g, '""');
+    return `"${text}"`;
+  }
+
+  function downloadCsv() {
+    if (!data) return;
+
+    const rows: string[][] = [
+      ["GREEN CHARCOAL NAMIBIA — MANAGEMENT REPORT"],
+      [u.selectedPeriod, data.date_from, data.date_to],
+      [u.reportDepartment, data.department],
+      [],
+      [u.leaveDetails],
+      ["Employee ID", "Employee", u.reportDepartment, u.dateFrom, u.dateTo, t.days, "Type", t.status, "Comment"],
+      ...data.leaves.map((row) => [
+        row.employee_code,
+        row.employee_name,
+        row.department,
+        row.period_start_date,
+        row.period_end_date,
+        String(row.period_days),
+        row.leave_type,
+        row.status,
+        row.comment,
+      ]),
+      [],
+      [u.absenceDetails],
+      ["Employee ID", "Employee", u.reportDepartment, "Date", u.classification, "Manager comment"],
+      ...data.absences.map((row) => [
+        row.employee_code,
+        row.employee_name,
+        row.department,
+        row.absence_date,
+        row.classification,
+        row.manager_comment,
+      ]),
+      [],
+      [u.overtimeDetails],
+      ["Employee ID", "Employee", u.reportDepartment, "Date", t.startTime, t.endTime, t.breakMinutes, t.totalHours, t.reason, t.status],
+      ...data.overtime.map((row) => [
+        row.employee_code,
+        row.employee_name,
+        row.department,
+        row.overtime_date,
+        row.start_time,
+        row.end_time,
+        String(row.break_minutes),
+        String(row.total_hours),
+        row.reason,
+        row.status,
+      ]),
+    ];
+
+    const csv = "\uFEFF" + rows.map((row) => row.map(csvCell).join(";")).join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `GCN_management_report_${data.date_from}_to_${data.date_to}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  const summary = data?.summary;
+
+  return (
+    <div className="space-y-6">
+      <section className="overflow-hidden border border-[#3a2e27] bg-[#171310] text-white shadow-xl">
+        <div className="grid gap-5 p-5 lg:grid-cols-[1fr_auto] lg:items-end">
+          <div>
+            <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-[#e6a45c]">{u.reports}</p>
+            <h1 className="mt-1 text-3xl font-black uppercase tracking-tight">{u.customPeriodReport}</h1>
+            <p className="mt-2 max-w-2xl text-sm text-[#c9bfb5]">{u.customPeriodIntro}</p>
+          </div>
+          {data && (
+            <button
+              type="button"
+              onClick={downloadCsv}
+              className="inline-flex h-11 items-center justify-center gap-2 bg-[#d99a55] px-5 text-sm font-black uppercase text-[#171310] hover:bg-[#c88843]"
+            >
+              <Download size={17} /> {u.exportCsv}
+            </button>
+          )}
+        </div>
+
+        <div className="grid gap-3 border-t border-[#3a2e27] bg-[#211914] p-5 md:grid-cols-[1fr_1fr_1.2fr_auto]">
+          <Field label={u.dateFrom}>
+            <input type="date" value={dateFrom} onChange={(event) => onDateFromChange(event.target.value)} className={inputClass} />
+          </Field>
+          <Field label={u.dateTo}>
+            <input type="date" value={dateTo} onChange={(event) => onDateToChange(event.target.value)} className={inputClass} />
+          </Field>
+          <Field label={u.reportDepartment}>
+            <select value={department} onChange={(event) => onDepartmentChange(event.target.value)} className={inputClass}>
+              <option value="all">{t.allDepartments}</option>
+              {departments.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </Field>
+          <div className="flex items-end">
+            <button
+              type="button"
+              disabled={loading}
+              onClick={onGenerate}
+              className="inline-flex h-[52px] w-full items-center justify-center gap-2 bg-white px-5 text-sm font-black uppercase text-[#171310] hover:bg-[#fff4e7] disabled:opacity-60 md:w-auto"
+            >
+              {loading ? <LoaderCircle className="animate-spin" size={18} /> : <FileSpreadsheet size={18} />}
+              {u.generateReport}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {!data || !summary ? (
+        <section className="border border-dashed border-[#cfc4b8] bg-white p-10 text-center shadow-sm">
+          <FileSpreadsheet className="mx-auto text-[#b87333]" size={36} />
+          <p className="mt-4 font-black text-slate-700">{u.noReportData}</p>
+        </section>
+      ) : (
+        <>
+          <section className="grid grid-cols-2 gap-px overflow-hidden border border-[#d9d0c6] bg-[#d9d0c6] shadow-lg md:grid-cols-4 xl:grid-cols-8">
+            <ReportKpi label={t.totalEmployees} value={summary.active_employees} />
+            <ReportKpi label={u.annualLeaveDays} value={summary.annual_leave_days} accent="text-blue-700" />
+            <ReportKpi label={u.compassionateDays} value={summary.compassionate_leave_days} accent="text-amber-700" />
+            <ReportKpi label={u.sickDays} value={summary.sick_days} accent="text-violet-700" />
+            <ReportKpi label={u.unjustifiedDays} value={summary.unjustified_days} accent="text-red-700" />
+            <ReportKpi label={u.approvedOvertimeHours} value={`${Number(summary.approved_overtime_hours).toFixed(1)} h`} accent="text-emerald-700" />
+            <ReportKpi label={u.pendingOvertimeHours} value={`${Number(summary.pending_overtime_hours).toFixed(1)} h`} accent="text-orange-700" />
+            <ReportKpi label={u.employeesWithApprovedOvertime} value={summary.employees_with_approved_overtime} />
+          </section>
+
+          <ReportTableSection
+            title={u.leaveDetails}
+            emptyText={u.noRowsForPeriod}
+            headers={["Employee", u.reportDepartment, u.dateFrom, u.dateTo, t.days, "Type", t.status]}
+            rows={data.leaves.map((row) => [
+              `${row.employee_code} — ${row.employee_name}`,
+              row.department,
+              formatDate(row.period_start_date),
+              formatDate(row.period_end_date),
+              row.period_days,
+              row.leave_type,
+              row.status.replaceAll("_", " "),
+            ])}
+          />
+
+          <ReportTableSection
+            title={u.absenceDetails}
+            emptyText={u.noRowsForPeriod}
+            headers={["Employee", u.reportDepartment, "Date", u.classification, "Manager comment"]}
+            rows={data.absences.map((row) => [
+              `${row.employee_code} — ${row.employee_name}`,
+              row.department,
+              formatDate(row.absence_date),
+              row.classification.replaceAll("_", " "),
+              row.manager_comment || "—",
+            ])}
+          />
+
+          <ReportTableSection
+            title={u.overtimeDetails}
+            emptyText={u.noRowsForPeriod}
+            headers={["Employee", u.reportDepartment, "Date", t.startTime, t.endTime, t.breakMinutes, t.totalHours, t.reason, t.status]}
+            rows={data.overtime.map((row) => [
+              `${row.employee_code} — ${row.employee_name}`,
+              row.department,
+              formatDate(row.overtime_date),
+              String(row.start_time).slice(0, 5),
+              String(row.end_time).slice(0, 5),
+              row.break_minutes,
+              `${Number(row.total_hours).toFixed(2)} h`,
+              row.reason || "—",
+              row.status.replaceAll("_", " "),
+            ])}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+function ReportKpi({
+  label,
+  value,
+  accent = "text-slate-950",
+}: {
+  label: string;
+  value: string | number;
+  accent?: string;
+}) {
+  return (
+    <article className="min-h-28 bg-white p-4">
+      <p className="font-mono text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">{label}</p>
+      <p className={`mt-3 text-2xl font-black ${accent}`}>{value}</p>
+    </article>
+  );
+}
+
+function ReportTableSection({
+  title,
+  headers,
+  rows,
+  emptyText,
+}: {
+  title: string;
+  headers: string[];
+  rows: Array<Array<string | number>>;
+  emptyText: string;
+}) {
+  return (
+    <section className="overflow-hidden border border-[#d9d0c6] bg-white shadow-lg">
+      <div className="border-b border-[#d9d0c6] bg-[#f0ebe4] px-5 py-4">
+        <h2 className="text-xl font-black uppercase text-[#1a1512]">{title}</h2>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[900px] border-collapse text-sm">
+          <thead>
+            <tr className="bg-[#171310] text-left font-mono text-[10px] font-black uppercase tracking-[0.1em] text-[#d8cec4]">
+              {headers.map((header) => <th key={header} className="px-4 py-3">{header}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr><td colSpan={headers.length} className="px-5 py-8 text-center font-bold text-slate-400">{emptyText}</td></tr>
+            ) : rows.map((row, rowIndex) => (
+              <tr key={rowIndex} className="border-t border-slate-200 odd:bg-white even:bg-[#fcfaf7]">
+                {row.map((value, columnIndex) => (
+                  <td key={`${rowIndex}-${columnIndex}`} className="whitespace-nowrap px-4 py-3 font-semibold text-slate-700">{value}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
