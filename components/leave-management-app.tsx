@@ -1307,15 +1307,45 @@ export function LeaveManagementApp() {
     setAbsenceBusy("new");
     setMessage(null);
     try {
-      const { error } = await supabase.rpc("portal_mark_absent", {
+      const employeeId = absenceEmployeeId;
+      const selectedDate = absenceDate;
+
+      const { data: savedAbsenceId, error } = await supabase.rpc("portal_mark_absent", {
         p_token: sessionToken,
-        p_employee_id: absenceEmployeeId,
-        p_absence_date: absenceDate,
+        p_employee_id: employeeId,
+        p_absence_date: selectedDate,
       });
       if (error) throw error;
+      if (!savedAbsenceId) throw new Error("Supabase did not return a saved absence ID.");
+
+      const { data: verificationRows, error: verificationError } = await supabase.rpc("portal_absences", {
+        p_token: sessionToken,
+        p_date_from: selectedDate,
+        p_date_to: selectedDate,
+      });
+      if (verificationError) throw verificationError;
+
+      const savedRows = (verificationRows ?? []) as AbsenceRow[];
+      const savedRow = savedRows.find(
+        (absence) =>
+          absence.id === savedAbsenceId
+          || (
+            absence.employee_id === employeeId
+            && absence.absence_date === selectedDate
+          ),
+      );
+
+      if (!savedRow) {
+        throw new Error("The absence was not found after saving. Please run SQL 29 in Supabase.");
+      }
+
+      setAbsences((current) => [
+        savedRow,
+        ...current.filter((absence) => absence.id !== savedRow.id),
+      ]);
       setAbsenceEmployeeId("");
-      setCalendarAnchor(absenceDate);
-      setMessage({ kind: "success", text: "Absence recorded." });
+      setCalendarAnchor(selectedDate);
+      setMessage({ kind: "success", text: `Absence saved for ${formatDate(selectedDate)}.` });
       await loadData(sessionToken);
     } catch (error) {
       setMessage({ kind: "error", text: errorText(error) });
