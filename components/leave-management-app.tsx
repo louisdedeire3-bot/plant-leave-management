@@ -1314,6 +1314,7 @@ export function LeaveManagementApp() {
       });
       if (error) throw error;
       setAbsenceEmployeeId("");
+      setCalendarAnchor(absenceDate);
       setMessage({ kind: "success", text: "Absence recorded." });
       await loadData(sessionToken);
     } catch (error) {
@@ -2241,16 +2242,22 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
     return publicHolidays.find((holiday) => holiday.holiday_date === date) ?? null;
   }
 
-  function absenceOnDate(employeeId: string, date: string) {
-    return absences.find((absence) => absence.employee_id === employeeId && absence.absence_date === date) ?? null;
+  function absenceOnDate(employee: Employee, date: string) {
+    const employeeCode = employee.employeeCode.trim().toUpperCase();
+    return absences.find((absence) => {
+      const sameEmployee =
+        absence.employee_id === employee.id
+        || absence.employee_code?.trim().toUpperCase() === employeeCode;
+      return sameEmployee && absence.absence_date === date;
+    }) ?? null;
   }
 
   function leaveOnDate(employeeId: string, date: string) {
     return requests.find((request) => request.employeeId === employeeId && date >= request.startDate && date <= request.endDate) ?? null;
   }
 
-  function calendarState(employeeId: string, date: string) {
-    const absence = absenceOnDate(employeeId, date);
+  function calendarState(employee: Employee, date: string) {
+    const absence = absenceOnDate(employee, date);
     if (absence) {
       const code: Record<AbsenceClassification, string> = {
         UNJUSTIFIED: "UA",
@@ -2261,7 +2268,7 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
       return { kind: "absence" as const, code: code[absence.classification], classification: absence.classification };
     }
 
-    const leave = leaveOnDate(employeeId, date);
+    const leave = leaveOnDate(employee.id, date);
     if (!leave) return { kind: "working" as const, code: "W" };
 
     if (leave.status === "approved") {
@@ -2273,12 +2280,12 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
   }
 
   const approvedCount = visibleEmployees.filter((employee) => rangeDates.some((date) => {
-    const state = calendarState(employee.id, isoDate(date));
+    const state = calendarState(employee, isoDate(date));
     return state.kind === "approved_leave";
   })).length;
-  const absentCount = visibleEmployees.filter((employee) => rangeDates.some((date) => calendarState(employee.id, isoDate(date)).kind === "absence")).length;
+  const absentCount = visibleEmployees.filter((employee) => rangeDates.some((date) => calendarState(employee, isoDate(date)).kind === "absence")).length;
   const pendingCount = visibleEmployees.filter((employee) => rangeDates.some((date) => {
-    const state = calendarState(employee.id, isoDate(date));
+    const state = calendarState(employee, isoDate(date));
     return state.kind === "pending_supervisor" || state.kind === "pending_manager";
   })).length;
   const cellWidth = scale === "day" ? 220 : scale === "week" ? 82 : 34;
@@ -2357,7 +2364,6 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
           <LegendBox className="border-amber-400 bg-amber-300" label="PS — Pending supervisor" />
           <LegendBox className="border-violet-400 bg-violet-600" label="PM — Pending manager" />
           <LegendBox className="border-amber-600 bg-amber-700" label={`PH — ${u.publicHoliday}`} />
-          <LegendBox className="border-slate-500 bg-slate-700" label={`OFF — ${u.sunday}`} />
         </div>
         <div className="max-h-[78vh] overflow-auto">
           <table className="border-collapse text-xs" style={{ minWidth, width: "100%" }}>
@@ -2366,7 +2372,7 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
                 <th style={{ minWidth: employeeColumnWidth, width: employeeColumnWidth }} className="sticky left-0 z-40 border-r border-slate-600 bg-slate-900 px-3 py-2 text-left font-mono text-[10px] font-black uppercase tracking-[0.1em]">{u.employeeDepartment}</th>
                 {rangeDates.map((date) => {
                   const dateKey = isoDate(date);
-                  const away = visibleEmployees.filter((employee) => calendarState(employee.id, dateKey).kind !== "working").length;
+                  const away = visibleEmployees.filter((employee) => calendarState(employee, dateKey).kind !== "working").length;
                   const holiday = publicHolidayOnDate(dateKey);
                   const saturday = date.getDay() === 6;
                   const sunday = date.getDay() === 0;
@@ -2401,9 +2407,25 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
                     <tr key={employee.id} className={employeeIndex % 2 === 0 ? "bg-white" : "bg-slate-50"}>
                       <td style={{ minWidth: employeeColumnWidth, width: employeeColumnWidth }} className="sticky left-0 z-10 border-b border-r border-slate-300 bg-inherit px-2 py-1"><div className="flex items-center gap-2"><span className="grid h-7 w-7 shrink-0 place-items-center border border-slate-500 bg-slate-800 font-mono text-[9px] font-black text-white">{initials(employee)}</span><div className="min-w-0"><p className="truncate text-[11px] font-black uppercase leading-tight text-slate-950">{employeeName(employee)}</p><p className="max-w-[195px] truncate font-mono text-[9px] font-bold uppercase leading-tight text-slate-500">{employee.employeeCode} · {employee.positionTitle}</p></div></div></td>
                       {rangeDates.map((date) => {
-                        if (date.getDay() === 0) return <td key={isoDate(date)} className="border-b border-r border-slate-300 bg-slate-200 p-0.5 text-center"><span className={`grid w-full place-items-center border border-slate-500 bg-slate-700 font-mono text-[10px] font-black text-white ${scale === "month" ? "h-6" : "h-8"}`}>OFF</span></td>;
-                        const state = calendarState(employee.id, isoDate(date));
-                        return <td key={isoDate(date)} className={`border-b border-r border-slate-300 p-0.5 text-center ${date.getDay() === 6 ? "bg-amber-50" : ""}`}><span title={state.kind === "absence" ? state.classification.replace("_", " ") : undefined} className={`grid w-full place-items-center border font-mono font-black tracking-[0.04em] ${scale === "month" ? "h-6 text-[8px]" : "h-8 text-[10px]"} ${calendarCellClass(state)}`}>{state.code}</span></td>;
+                        const dateKey = isoDate(date);
+                        const state = calendarState(employee, dateKey);
+                        return (
+                          <td
+                            key={dateKey}
+                            className={`border-b border-r border-slate-300 p-0.5 text-center ${
+                              date.getDay() === 6 ? "bg-amber-50" : date.getDay() === 0 ? "bg-slate-100" : ""
+                            }`}
+                          >
+                            <span
+                              title={state.kind === "absence" ? state.classification.replace("_", " ") : undefined}
+                              className={`grid w-full place-items-center border font-mono font-black tracking-[0.04em] ${
+                                scale === "month" ? "h-6 text-[8px]" : "h-8 text-[10px]"
+                              } ${calendarCellClass(state)}`}
+                            >
+                              {state.code}
+                            </span>
+                          </td>
+                        );
                       })}
                     </tr>
                   ))}
