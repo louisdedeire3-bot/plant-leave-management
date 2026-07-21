@@ -54,6 +54,13 @@ type AppLanguage = Language | "af";
 type AppView = RoleView | "reports";
 type PortalRole = "employee" | "supervisor" | "manager";
 type ManpowerStatus = "GREEN" | "ORANGE" | "RED" | "NOT_ASSESSED";
+type LeaveType = "ANNUAL" | "COMPASSIONATE" | "UNPAID" | "MIXED";
+type ShortfallAction = "SPLIT" | "ALL_UNPAID";
+type PortalEmployee = Employee & {
+  sickEntitlement: number;
+  sickUsed: number;
+  sickBalance: number;
+};
 type CalendarScale = "day" | "week" | "month";
 type Decision = "approve" | "reject";
 
@@ -101,6 +108,9 @@ interface EmployeeRow {
   earned: number | string | null;
   used: number | string | null;
   balance: number | string | null;
+  sick_entitlement: number | string | null;
+  sick_used: number | string | null;
+  sick_balance: number | string | null;
 }
 
 interface LeaveRow {
@@ -113,13 +123,23 @@ interface LeaveRow {
   status: string;
   created_at: string;
   leave_type?: string | null;
+  annual_days?: number | string | null;
+  unpaid_days?: number | string | null;
+  annual_end_date?: string | null;
+  unpaid_start_date?: string | null;
+  shortfall_action?: string | null;
   manpower_status?: ManpowerStatus | null;
   manpower_details?: any;
   assessed_at?: string | null;
 }
 
 type LeaveWithManpower = LeaveRequest & {
-  leaveType: string;
+  leaveType: LeaveType;
+  annualDays: number;
+  unpaidDays: number;
+  annualEndDate: string | null;
+  unpaidStartDate: string | null;
+  shortfallAction: ShortfallAction | null;
   manpowerStatus: ManpowerStatus;
   manpowerDetails: any;
   assessedAt: string | null;
@@ -131,7 +151,7 @@ interface FactoryModeRow {
   updated_at: string;
 }
 
-type AbsenceClassification = "UNJUSTIFIED" | "SICK" | "ANNUAL" | "COMPASSIONATE";
+type AbsenceClassification = "UNJUSTIFIED" | "SICK" | "ANNUAL" | "COMPASSIONATE" | "UNPAID";
 
 interface AbsenceRow {
   id: string;
@@ -208,6 +228,7 @@ interface ManagementReportSummary {
   active_employees: number;
   annual_leave_days: number;
   compassionate_leave_days: number;
+  unpaid_leave_days: number;
   sick_days: number;
   unjustified_days: number;
   approved_overtime_hours: number;
@@ -229,6 +250,11 @@ interface ManagementReportLeaveRow {
   period_days: number;
   requested_days: number;
   leave_type: string;
+  annual_days: number;
+  unpaid_days: number;
+  annual_end_date: string | null;
+  unpaid_start_date: string | null;
+  shortfall_action: string | null;
   status: string;
   comment: string;
   created_at: string;
@@ -494,6 +520,26 @@ const uiCopyEn = {
   sickLeave: "Sick Leave",
   annualLeave: "Annual Leave",
   compassionateLeave: "Compassionate Leave",
+  unpaidLeave: "Unpaid Leave",
+  leaveType: "Leave type",
+  requestLeaveGeneral: "Request leave",
+  noBalanceDeduction: "No balance deduction",
+  balanceImpact: "Balance impact",
+  unpaidLeaveDays: "Unpaid leave days",
+  sickLeaveBalance: "Sick leave balance",
+  sickLeaveUsed: "Sick leave used",
+  automaticUnpaidTitle: "Automatic Unpaid Leave",
+  automaticUnpaidText: "Your annual leave balance is not enough. This request will automatically be submitted as Unpaid Leave.",
+  convertedToUnpaid: "Annual balance insufficient — request submitted as Unpaid Leave.",
+  insufficientBalanceChoice: "Your Annual Leave balance is insufficient. Choose how to process the request.",
+  splitPaidUnpaid: "Use my Annual balance, then Unpaid Leave",
+  splitPaidUnpaidDetail: "Use the remaining paid leave days first and record only the excess as Unpaid Leave.",
+  allUnpaidChoice: "Make the entire request Unpaid Leave",
+  allUnpaidDetail: "Keep the Annual Leave balance unchanged and record every requested day as Unpaid Leave.",
+  annualPart: "Annual part",
+  unpaidPart: "Unpaid part",
+  splitRequestSubmitted: "Request submitted with Annual Leave and Unpaid Leave portions.",
+  mixedLeave: "Annual + Unpaid Leave",
   factoryManpowerBoard: "Factory manpower board",
   employeesShown: "Employees shown",
   departments: "Departments",
@@ -630,6 +676,26 @@ const uiCopy = {
     sickLeave: "Siekteverlof",
     annualLeave: "Jaarlikse verlof",
     compassionateLeave: "Deernisverlof",
+    unpaidLeave: "Onbetaalde verlof",
+    leaveType: "Verloftipe",
+    requestLeaveGeneral: "Versoek verlof",
+    noBalanceDeduction: "Geen saldo-aftrekking",
+    balanceImpact: "Saldo-impak",
+    unpaidLeaveDays: "Onbetaalde verlofdae",
+    sickLeaveBalance: "Siekteverlofsaldo",
+    sickLeaveUsed: "Siekteverlof gebruik",
+    automaticUnpaidTitle: "Outomatiese onbetaalde verlof",
+    automaticUnpaidText: "Jou jaarlikse verlofsaldo is onvoldoende. Hierdie versoek sal outomaties as onbetaalde verlof ingedien word.",
+    convertedToUnpaid: "Onvoldoende jaarlikse verlofsaldo — versoek as onbetaalde verlof ingedien.",
+    insufficientBalanceChoice: "Jou jaarlikse verlofsaldo is onvoldoende. Kies hoe die versoek verwerk moet word.",
+    splitPaidUnpaid: "Gebruik my jaarlikse saldo, daarna onbetaalde verlof",
+    splitPaidUnpaidDetail: "Gebruik eers die oorblywende betaalde verlofdae en merk net die tekort as onbetaalde verlof.",
+    allUnpaidChoice: "Maak die hele versoek onbetaalde verlof",
+    allUnpaidDetail: "Hou die jaarlikse verlofsaldo onveranderd en merk al die aangevraagde dae as onbetaalde verlof.",
+    annualPart: "Jaarlikse deel",
+    unpaidPart: "Onbetaalde deel",
+    splitRequestSubmitted: "Versoek met jaarlikse en onbetaalde verlofdele ingedien.",
+    mixedLeave: "Jaarlikse + onbetaalde verlof",
     factoryManpowerBoard: "Fabrieksbemanningsbord",
     employeesShown: "Werknemers gewys",
     departments: "Afdelings",
@@ -733,7 +799,7 @@ function mapProfile(row: ProfileRow | LoginRow): PortalProfile {
   };
 }
 
-function mapEmployee(row: EmployeeRow): Employee {
+function mapEmployee(row: EmployeeRow): PortalEmployee {
   return {
     id: row.id,
     employeeCode: row.employee_code,
@@ -747,6 +813,9 @@ function mapEmployee(row: EmployeeRow): Employee {
     earned: asNumber(row.earned),
     used: asNumber(row.used),
     balance: asNumber(row.balance),
+    sickEntitlement: asNumber(row.sick_entitlement),
+    sickUsed: asNumber(row.sick_used),
+    sickBalance: asNumber(row.sick_balance),
   };
 }
 
@@ -760,7 +829,16 @@ function mapLeave(row: LeaveRow): LeaveWithManpower {
     comment: row.comment ?? "",
     status: normalizeStatus(row.status),
     createdAt: row.created_at,
-    leaveType: row.leave_type ?? "ANNUAL",
+    leaveType: (row.leave_type ?? "ANNUAL") as LeaveType,
+    annualDays: asNumber(
+      row.annual_days ?? ((row.leave_type ?? "ANNUAL") === "ANNUAL" ? row.requested_days : 0),
+    ),
+    unpaidDays: asNumber(
+      row.unpaid_days ?? ((row.leave_type ?? "ANNUAL") === "UNPAID" ? row.requested_days : 0),
+    ),
+    annualEndDate: row.annual_end_date ?? null,
+    unpaidStartDate: row.unpaid_start_date ?? null,
+    shortfallAction: (row.shortfall_action as ShortfallAction | null) ?? null,
     manpowerStatus: row.manpower_status ?? "NOT_ASSESSED",
     manpowerDetails: row.manpower_details ?? null,
     assessedAt: row.assessed_at ?? null,
@@ -860,7 +938,7 @@ export function LeaveManagementApp() {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [view, setView] = useState<AppView>("employee");
   const [module, setModule] = useState<EmployeeModule>("leave");
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employees, setEmployees] = useState<PortalEmployee[]>([]);
   const [requests, setRequests] = useState<LeaveWithManpower[]>([]);
   const [factoryMode, setFactoryMode] = useState<FactoryModeRow | null>(null);
   const [absences, setAbsences] = useState<AbsenceRow[]>([]);
@@ -886,6 +964,8 @@ export function LeaveManagementApp() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [comment, setComment] = useState("");
+  const [leaveType, setLeaveType] = useState<LeaveType>("ANNUAL");
+  const [shortfallAction, setShortfallAction] = useState<ShortfallAction>("SPLIT");
   const [overtimeDate, setOvertimeDate] = useState(isoDate(new Date()));
   const [overtimeStart, setOvertimeStart] = useState("");
   const [overtimeEnd, setOvertimeEnd] = useState("");
@@ -1110,10 +1190,8 @@ export function LeaveManagementApp() {
       setMessage({ kind: "error", text: t.invalidDates });
       return;
     }
-    if (days > currentEmployee.balance) {
-      setMessage({ kind: "error", text: t.insufficientBalance });
-      return;
-    }
+    const hasAnnualShortfall =
+      leaveType === "ANNUAL" && days > currentEmployee.balance;
     setSaving(true);
     setMessage(null);
     try {
@@ -1122,12 +1200,24 @@ export function LeaveManagementApp() {
         p_start_date: startDate,
         p_end_date: endDate,
         p_comment: comment.trim() || null,
+        p_leave_type: leaveType,
+        p_shortfall_action: shortfallAction,
       });
       if (error) throw error;
       setStartDate("");
       setEndDate("");
       setComment("");
-      setMessage({ kind: "success", text: t.submitted });
+      setLeaveType("ANNUAL");
+      setShortfallAction("SPLIT");
+      setMessage({
+        kind: "success",
+        text:
+          hasAnnualShortfall && shortfallAction === "SPLIT"
+            ? u.splitRequestSubmitted
+            : hasAnnualShortfall
+              ? u.convertedToUnpaid
+              : t.submitted,
+      });
       await loadData(sessionToken);
     } catch (error) {
       setMessage({ kind: "error", text: errorText(error) });
@@ -1492,6 +1582,10 @@ export function LeaveManagementApp() {
               startDate={startDate}
               endDate={endDate}
               comment={comment}
+              leaveType={leaveType}
+              shortfallAction={shortfallAction}
+              setShortfallAction={setShortfallAction}
+              setLeaveType={setLeaveType}
               setStartDate={setStartDate}
               setEndDate={setEndDate}
               setComment={setComment}
@@ -1743,6 +1837,7 @@ function ManagementReportView({
       [localizedCopy[language].totalEmployees, data.summary.active_employees],
       [u.annualLeaveDays, data.summary.annual_leave_days],
       [u.compassionateDays, data.summary.compassionate_leave_days],
+      [u.unpaidLeaveDays, data.summary.unpaid_leave_days],
       [u.sickDays, data.summary.sick_days],
       [u.unjustifiedDays, data.summary.unjustified_days],
       [u.approvedOvertimeHours, Number(data.summary.approved_overtime_hours)],
@@ -1770,6 +1865,8 @@ function ManagementReportView({
       "Original End": asExcelDate(row.end_date),
       "Requested Days": Number(row.requested_days),
       "Leave Type": row.leave_type,
+      "Annual Days": Number(row.annual_days ?? 0),
+      "Unpaid Days": Number(row.unpaid_days ?? 0),
       Status: row.status.replaceAll("_", " "),
       Comment: row.comment,
       "Manager Approved At": row.manager_approved_at ? new Date(row.manager_approved_at) : "",
@@ -1778,7 +1875,7 @@ function ManagementReportView({
     const leaveSheet = XLSX.utils.json_to_sheet(leaveRows, { cellDates: true });
     applyWorksheetLayout(
       leaveSheet,
-      [14, 26, 22, 14, 14, 14, 14, 14, 15, 18, 20, 34, 22, 34],
+      [14, 26, 22, 14, 14, 14, 14, 14, 15, 18, 14, 14, 20, 34, 22, 34],
       [3, 4, 6, 7, 12],
     );
     XLSX.utils.book_append_sheet(workbook, leaveSheet, "Leave");
@@ -1887,6 +1984,7 @@ function ManagementReportView({
             <ReportKpi label={t.totalEmployees} value={summary.active_employees} />
             <ReportKpi label={u.annualLeaveDays} value={summary.annual_leave_days} accent="text-blue-700" />
             <ReportKpi label={u.compassionateDays} value={summary.compassionate_leave_days} accent="text-amber-700" />
+            <ReportKpi label={u.unpaidLeaveDays} value={summary.unpaid_leave_days} accent="text-slate-700" />
             <ReportKpi label={u.sickDays} value={summary.sick_days} accent="text-violet-700" />
             <ReportKpi label={u.unjustifiedDays} value={summary.unjustified_days} accent="text-red-700" />
             <ReportKpi label={u.approvedOvertimeHours} value={`${Number(summary.approved_overtime_hours).toFixed(1)} h`} accent="text-emerald-700" />
@@ -1904,7 +2002,9 @@ function ManagementReportView({
               formatDate(row.period_start_date),
               formatDate(row.period_end_date),
               row.period_days,
-              row.leave_type,
+              row.leave_type === "MIXED"
+                ? `${row.annual_days} AL + ${row.unpaid_days} UL`
+                : row.leave_type,
               row.status.replaceAll("_", " "),
             ])}
           />
@@ -2099,12 +2199,16 @@ function LoginScreen({ language, setLanguage, login, loading }: { language: AppL
 interface EmployeeViewProps {
   language: AppLanguage;
   t: (typeof localizedCopy)[AppLanguage];
-  employee: Employee;
+  employee: PortalEmployee;
   module: EmployeeModule;
   setModule: (value: EmployeeModule) => void;
   startDate: string;
   endDate: string;
   comment: string;
+  leaveType: LeaveType;
+  shortfallAction: ShortfallAction;
+  setShortfallAction: (value: ShortfallAction) => void;
+  setLeaveType: (value: LeaveType) => void;
   setStartDate: (value: string) => void;
   setEndDate: (value: string) => void;
   setComment: (value: string) => void;
@@ -2129,8 +2233,28 @@ interface EmployeeViewProps {
 }
 
 function EmployeeView(props: EmployeeViewProps) {
-  const { language, t, employee, module, setModule, startDate, endDate, comment, setStartDate, setEndDate, setComment, requestedDays, leaveHolidays, submitLeave, overtimeDate, overtimeStart, overtimeEnd, breakMinutes, overtimeReason, setOvertimeDate, setOvertimeStart, setOvertimeEnd, setBreakMinutes, setOvertimeReason, calculatedOvertime, submitOvertime, saving, employeeRequests, employeeOvertime } = props;
-  const balanceAfter = employee.balance - requestedDays;
+  const { language, t, employee, module, setModule, startDate, endDate, comment, leaveType, shortfallAction, setShortfallAction, setLeaveType, setStartDate, setEndDate, setComment, requestedDays, leaveHolidays, submitLeave, overtimeDate, overtimeStart, overtimeEnd, breakMinutes, overtimeReason, setOvertimeDate, setOvertimeStart, setOvertimeEnd, setBreakMinutes, setOvertimeReason, calculatedOvertime, submitOvertime, saving, employeeRequests, employeeOvertime } = props;
+  const annualShortfall =
+    leaveType === "ANNUAL" && requestedDays > employee.balance;
+  const availableWholeAnnualDays = Math.max(0, Math.floor(employee.balance));
+  const splitAnnualDays =
+    annualShortfall && shortfallAction === "SPLIT"
+      ? Math.min(availableWholeAnnualDays, requestedDays)
+      : leaveType === "ANNUAL" && !annualShortfall
+        ? requestedDays
+        : 0;
+  const splitUnpaidDays =
+    leaveType === "UNPAID"
+      ? requestedDays
+      : annualShortfall
+        ? shortfallAction === "SPLIT"
+          ? Math.max(0, requestedDays - splitAnnualDays)
+          : requestedDays
+        : 0;
+  const balanceAfter =
+    leaveType === "ANNUAL"
+      ? Math.max(0, employee.balance - splitAnnualDays)
+      : employee.balance;
   const u = uiCopy[language];
 
   return (
@@ -2145,8 +2269,13 @@ function EmployeeView(props: EmployeeViewProps) {
             <p className="mt-1 text-sm text-slate-500">{u.supervisorLabel}: {employee.supervisor}</p>
           </div>
         </div>
-        <div className="grid gap-px bg-slate-200 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-px bg-slate-200 sm:grid-cols-2 xl:grid-cols-5">
           <StatStrip label={t.availableBalance} value={`${employee.balance} ${t.days}`} accent="text-emerald-600" />
+          <StatStrip
+            label={u.sickLeaveBalance}
+            value={`${employee.sickBalance} / ${employee.sickEntitlement} ${t.days}`}
+            accent="text-violet-700"
+          />
           <StatStrip label={t.earnedThisYear} value={`${employee.earned} ${t.days}`} />
           <StatStrip label={t.usedThisYear} value={`${employee.used} ${t.days}`} accent="text-rose-600" />
           <StatStrip label={t.department} value={employee.department} />
@@ -2161,8 +2290,19 @@ function EmployeeView(props: EmployeeViewProps) {
       {module === "leave" ? (
         <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
           <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-soft sm:p-8">
-            <SectionHeader eyebrow={t.annualLeaveTab} title={t.requestLeave} icon={CalendarDays} />
+            <SectionHeader eyebrow={t.annualLeaveTab} title={u.requestLeaveGeneral} icon={CalendarDays} />
             <form onSubmit={submitLeave} className="mt-7 space-y-5">
+              <Field label={u.leaveType}>
+                <select
+                  value={leaveType}
+                  onChange={(event) => setLeaveType(event.target.value as LeaveType)}
+                  className={inputClass}
+                >
+                  <option value="ANNUAL">{u.annualLeave}</option>
+                  <option value="COMPASSIONATE">{u.compassionateLeave}</option>
+                  <option value="UNPAID">{u.unpaidLeave}</option>
+                </select>
+              </Field>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label={t.startDate}><input required type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className={inputClass} /></Field>
                 <Field label={t.endDate}><input required type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className={inputClass} /></Field>
@@ -2170,8 +2310,73 @@ function EmployeeView(props: EmployeeViewProps) {
               <Field label={t.comment}><textarea rows={4} value={comment} onChange={(event) => setComment(event.target.value)} placeholder={t.commentPlaceholder} className={`${inputClass} resize-none`} /></Field>
               <div className="grid gap-3 rounded-3xl border border-[#ecd3b5] bg-[#fff8ef] p-4 sm:grid-cols-2">
                 <CalculationTile label={t.requestedDays} value={`${requestedDays} ${t.days}`} />
-                <CalculationTile label={t.balanceAfter} value={`${balanceAfter} ${t.days}`} danger={balanceAfter < 0} />
+                {leaveType === "ANNUAL" && (!annualShortfall || shortfallAction === "SPLIT") ? (
+                  <CalculationTile label={t.balanceAfter} value={`${balanceAfter} ${t.days}`} />
+                ) : (
+                  <CalculationTile label={u.balanceImpact} value={u.noBalanceDeduction} />
+                )}
               </div>
+              {annualShortfall && (
+                <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.12em] text-amber-900">
+                    {u.insufficientBalanceChoice}
+                  </p>
+
+                  <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                    <label
+                      className={`cursor-pointer rounded-2xl border p-4 transition ${
+                        shortfallAction === "SPLIT"
+                          ? "border-[#b87333] bg-white ring-2 ring-[#d99a55]/30"
+                          : "border-amber-200 bg-amber-50/60"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="radio"
+                          name="shortfall-action"
+                          value="SPLIT"
+                          checked={shortfallAction === "SPLIT"}
+                          onChange={() => setShortfallAction("SPLIT")}
+                          className="mt-1 h-4 w-4 accent-[#b87333]"
+                        />
+                        <div>
+                          <p className="font-black text-slate-950">{u.splitPaidUnpaid}</p>
+                          <p className="mt-1 text-sm text-slate-600">{u.splitPaidUnpaidDetail}</p>
+                          <p className="mt-3 font-mono text-xs font-black uppercase text-[#8a5528]">
+                            {u.annualPart}: {splitAnnualDays} {t.days} · {u.unpaidPart}: {Math.max(0, requestedDays - splitAnnualDays)} {t.days}
+                          </p>
+                        </div>
+                      </div>
+                    </label>
+
+                    <label
+                      className={`cursor-pointer rounded-2xl border p-4 transition ${
+                        shortfallAction === "ALL_UNPAID"
+                          ? "border-slate-700 bg-white ring-2 ring-slate-400/30"
+                          : "border-amber-200 bg-amber-50/60"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="radio"
+                          name="shortfall-action"
+                          value="ALL_UNPAID"
+                          checked={shortfallAction === "ALL_UNPAID"}
+                          onChange={() => setShortfallAction("ALL_UNPAID")}
+                          className="mt-1 h-4 w-4 accent-slate-800"
+                        />
+                        <div>
+                          <p className="font-black text-slate-950">{u.allUnpaidChoice}</p>
+                          <p className="mt-1 text-sm text-slate-600">{u.allUnpaidDetail}</p>
+                          <p className="mt-3 font-mono text-xs font-black uppercase text-slate-700">
+                            {u.annualPart}: 0 {t.days} · {u.unpaidPart}: {requestedDays} {t.days}
+                          </p>
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              )}
               {leaveHolidays.length > 0 && (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                   <p className="text-xs font-black uppercase tracking-[0.12em] text-amber-800">
@@ -2194,7 +2399,9 @@ function EmployeeView(props: EmployeeViewProps) {
             {employeeRequests.map((request) => (
               <article key={request.id} className="rounded-2xl border border-slate-200 p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <div><p className="font-black text-slate-950">{formatDate(request.startDate)} → {formatDate(request.endDate)}</p><p className="mt-1 text-sm text-slate-500">{request.days} {t.days}{request.comment ? ` · ${request.comment}` : ""}</p></div>
+                  <div><p className="font-black text-slate-950">{formatDate(request.startDate)} → {formatDate(request.endDate)}</p><p className="mt-1 text-sm text-slate-500">{request.leaveType === "MIXED"
+                      ? `${u.mixedLeave} · ${request.annualDays} ${t.days} AL + ${request.unpaidDays} ${t.days} UL`
+                      : `${request.leaveType.replace("_", " ")} · ${request.days} ${t.days}`}{request.comment ? ` · ${request.comment}` : ""}</p></div>
                   <StatusBadge status={request.status} language={language} />
                 </div>
               </article>
@@ -2294,6 +2501,7 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
         SICK: "SL",
         ANNUAL: "AL",
         COMPASSIONATE: "CL",
+        UNPAID: "UL",
       };
       return { kind: "absence" as const, code: code[absence.classification], classification: absence.classification };
     }
@@ -2302,7 +2510,26 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
     if (!leave) return { kind: "working" as const, code: "W" };
 
     if (leave.status === "approved") {
-      return { kind: "approved_leave" as const, code: leave.leaveType === "COMPASSIONATE" ? "CL" : "AL" };
+      if (leave.leaveType === "MIXED") {
+        const isAnnualPart =
+          Boolean(leave.annualEndDate) && date <= (leave.annualEndDate as string);
+        return {
+          kind: "approved_leave" as const,
+          code: isAnnualPart ? "AL" : "UL",
+          leaveType: isAnnualPart ? "ANNUAL" as const : "UNPAID" as const,
+        };
+      }
+
+      const code: Record<Exclude<LeaveType, "MIXED">, string> = {
+        ANNUAL: "AL",
+        COMPASSIONATE: "CL",
+        UNPAID: "UL",
+      };
+      return {
+        kind: "approved_leave" as const,
+        code: code[leave.leaveType],
+        leaveType: leave.leaveType,
+      };
     }
     if (leave.status === "pending_supervisor") return { kind: "pending_supervisor" as const, code: "PS" };
     if (leave.status === "pending_manager") return { kind: "pending_manager" as const, code: "PM" };
@@ -2343,11 +2570,18 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
         SICK: "border-violet-500 bg-violet-600 text-white",
         ANNUAL: "border-blue-500 bg-blue-600 text-white",
         COMPASSIONATE: "border-amber-500 bg-amber-400 text-amber-950",
+        UNPAID: "border-slate-600 bg-slate-700 text-white",
       }[state.classification];
+    }
+    if (state.kind === "approved_leave") {
+      return {
+        ANNUAL: "border-blue-400 bg-blue-600 text-white",
+        COMPASSIONATE: "border-amber-500 bg-amber-400 text-amber-950",
+        UNPAID: "border-slate-600 bg-slate-700 text-white",
+      }[state.leaveType];
     }
     return {
       working: "border-emerald-300 bg-emerald-100 text-emerald-900",
-      approved_leave: "border-blue-400 bg-blue-600 text-white",
       pending_supervisor: "border-amber-400 bg-amber-300 text-amber-950",
       pending_manager: "border-violet-400 bg-violet-600 text-white",
     }[state.kind];
@@ -2388,6 +2622,7 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-300 bg-slate-200 px-3 py-2 font-mono text-[9px] font-black uppercase tracking-[0.08em] text-slate-700">
           <LegendBox className="border-emerald-300 bg-emerald-100" label={`W — ${u.working}`} />
           <LegendBox className="border-blue-400 bg-blue-600" label={`AL — ${u.annualLeave}`} />
+          <LegendBox className="border-slate-600 bg-slate-700" label={`UL — ${u.unpaidLeave}`} />
           <LegendBox className="border-violet-500 bg-violet-600" label={`SL — ${u.sickLeave}`} />
           <LegendBox className="border-amber-500 bg-amber-400" label={`CL — ${u.compassionateLeave}`} />
           <LegendBox className="border-red-500 bg-red-600" label={`UA — ${u.unjustified}`} />
@@ -2901,6 +3136,7 @@ function AttendanceBoard({
     SICK: "bg-violet-100 text-violet-800 ring-violet-200",
     ANNUAL: "bg-blue-100 text-blue-800 ring-blue-200",
     COMPASSIONATE: "bg-amber-100 text-amber-900 ring-amber-200",
+    UNPAID: "bg-slate-200 text-slate-900 ring-slate-300",
   };
 
   return (
@@ -2997,7 +3233,7 @@ function AttendanceBoard({
                   <td className="px-5 py-4 font-semibold text-slate-600">{absence.department}</td>
                   <td className="px-5 py-4 font-semibold">{formatDate(absence.absence_date)}</td>
                   <td className="px-5 py-4"><span className={`inline-flex px-3 py-1.5 text-xs font-black ring-1 ${classificationStyle[absence.classification]}`}>{absence.classification.replace("_"," ")}</span></td>
-                  {isManager && <td className="px-5 py-4"><select disabled={busyId === absence.id} value={absence.classification} onChange={(e) => onReclassify(absence.id, e.target.value as AbsenceClassification)} className="border border-slate-300 bg-white px-3 py-2 text-sm font-black"><option value="UNJUSTIFIED">{u.unjustified}</option><option value="SICK">{u.sickLeave}</option><option value="ANNUAL">{u.annualLeave}</option><option value="COMPASSIONATE">{u.compassionateLeave}</option></select></td>}
+                  {isManager && <td className="px-5 py-4"><select disabled={busyId === absence.id} value={absence.classification} onChange={(e) => onReclassify(absence.id, e.target.value as AbsenceClassification)} className="border border-slate-300 bg-white px-3 py-2 text-sm font-black"><option value="UNJUSTIFIED">{u.unjustified}</option><option value="SICK">{u.sickLeave}</option><option value="ANNUAL">{u.annualLeave}</option><option value="COMPASSIONATE">{u.compassionateLeave}</option><option value="UNPAID">{u.unpaidLeave}</option></select></td>}
                 </tr>
               ))
             }
@@ -3054,7 +3290,9 @@ function RequestTable({ title, employees, requests, language, t, savingRequestId
                   <div>
                     <EmployeeCell employee={employee}/>
                     <p className="mt-3 text-sm font-semibold text-slate-600">
-                      {employee.department} · {formatDate(request.startDate)} → {formatDate(request.endDate)} · {request.days} days
+                      {employee.department} · {request.leaveType === "MIXED"
+                          ? `${request.annualDays} AL + ${request.unpaidDays} UL`
+                          : request.leaveType.replace("_", " ")} · {formatDate(request.startDate)} → {formatDate(request.endDate)} · {request.days} days
                     </p>
                     <div className="mt-3"><StatusBadge status={request.status} language={language}/></div>
                   </div>
