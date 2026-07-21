@@ -1707,6 +1707,26 @@ export function LeaveManagementApp() {
 
           {view === "manager" && profile.role === "manager" && (
             <div className="space-y-6">
+            <ApprovalDashboard
+              eyebrow={t.finalApproval}
+              title={u.managerBoard}
+              stats={[
+                { label: t.totalEmployees, value: employees.length, icon: UsersRound },
+                { label: t.onLeaveToday, value: onLeaveToday.length, icon: CalendarDays },
+                { label: t.pendingManager, value: managerLeavePending.length + managerOvertimePending.length, icon: Clock3 },
+                { label: t.approvedThisMonth, value: approvedThisMonth.length, icon: CalendarDays },
+              ]}
+              employees={employees}
+              leaveRequests={managerLeavePending}
+              overtimeRequests={managerOvertimePending}
+              language={language}
+              t={t}
+              savingRequestId={savingRequestId}
+              onLeaveDecision={(id, decision) => void decide("leave", id, decision)}
+              onOvertimeDecision={(id, decision) => void decide("overtime", id, decision)}
+              onReassess={(id) => void reassessLeave(id)}
+              showManpower={true}
+            />
               <section className="border border-[#3a2e27] bg-[#171310] p-5 text-white shadow-xl shadow-black/10">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div><p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">{u.factoryMode}</p><h2 className="mt-1 text-2xl font-black">{factoryMode?.low_season_mode !== false ? u.lowSeason : u.highSeason}</h2><p className="mt-1 text-sm text-slate-400">{factoryMode?.low_season_mode !== false ? u.lowSeasonDetail : u.highSeasonDetail}</p></div>
@@ -1733,26 +1753,6 @@ export function LeaveManagementApp() {
                 onMarkAbsent={() => void markAbsent()}
                 onReclassify={(id, classification) => void reclassifyAbsence(id, classification)}
               />
-            <ApprovalDashboard
-              eyebrow={t.finalApproval}
-              title={u.managerBoard}
-              stats={[
-                { label: t.totalEmployees, value: employees.length, icon: UsersRound },
-                { label: t.onLeaveToday, value: onLeaveToday.length, icon: CalendarDays },
-                { label: t.pendingManager, value: managerLeavePending.length + managerOvertimePending.length, icon: Clock3 },
-                { label: t.approvedThisMonth, value: approvedThisMonth.length, icon: CalendarDays },
-              ]}
-              employees={employees}
-              leaveRequests={managerLeavePending}
-              overtimeRequests={managerOvertimePending}
-              language={language}
-              t={t}
-              savingRequestId={savingRequestId}
-              onLeaveDecision={(id, decision) => void decide("leave", id, decision)}
-              onOvertimeDecision={(id, decision) => void decide("overtime", id, decision)}
-              onReassess={(id) => void reassessLeave(id)}
-              showManpower={true}
-            />
             </div>
           )}
         </main>
