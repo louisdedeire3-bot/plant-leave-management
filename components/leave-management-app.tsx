@@ -2228,7 +2228,7 @@ interface EmployeeViewProps {
   calculatedOvertime: number;
   submitOvertime: (event: FormEvent<HTMLFormElement>) => void;
   saving: boolean;
-  employeeRequests: LeaveRequest[];
+  employeeRequests: LeaveWithManpower[];
   employeeOvertime: OvertimeRequest[];
 }
 
