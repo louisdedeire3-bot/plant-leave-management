@@ -51,7 +51,7 @@ import type {
 } from "@/lib/types";
 
 type AppLanguage = Language | "af";
-type AppView = RoleView | "reports";
+type AppView = RoleView | "employees" | "reports";
 type PortalRole = "employee" | "supervisor" | "manager";
 type ManpowerStatus = "GREEN" | "ORANGE" | "RED" | "NOT_ASSESSED";
 type LeaveType = "ANNUAL" | "COMPASSIONATE" | "UNPAID" | "MIXED";
@@ -927,6 +927,7 @@ function viewOptionsFor(profile: PortalProfile): Array<{ id: AppView; icon: Luci
   }
   return [
     { id: "manager", icon: ShieldCheck },
+    { id: "employees", icon: UsersRound },
     { id: "reports", icon: FileSpreadsheet },
     { id: "calendar", icon: CalendarDays },
   ];
@@ -1556,7 +1557,13 @@ export function LeaveManagementApp() {
                 }`}
               >
                 <Icon size={18} />
-                <span>{id === "reports" ? u.reports : t[id as RoleView]}</span>
+                <span>
+                  {id === "employees"
+                    ? u.employees
+                    : id === "reports"
+                      ? u.reports
+                      : t[id as RoleView]}
+                </span>
               </button>
             ))}
           </nav>
@@ -1607,6 +1614,24 @@ export function LeaveManagementApp() {
               saving={saving}
               employeeRequests={employeeRequests}
               employeeOvertime={employeeOvertime}
+            />
+          )}
+
+          {view === "employees" && profile.role === "manager" && (
+            <EmployeeManagementPanel
+              language={language}
+              employees={managedEmployees}
+              options={employeeAdminOptions}
+              editor={employeeEditor}
+              busy={employeeAdminBusy}
+              accessCode={newAccessCode}
+              onNew={openNewEmployee}
+              onEdit={openEditEmployee}
+              onClose={() => setEmployeeEditor(null)}
+              onChange={setEmployeeEditor}
+              onSave={() => void saveEmployeeEditor()}
+              onResetCode={(employee) => void resetEmployeeAccessCode(employee)}
+              onDismissCode={() => setNewAccessCode(null)}
             />
           )}
 
@@ -1692,21 +1717,6 @@ export function LeaveManagementApp() {
                 language={language}
                 requests={overtimeRequests}
                 employees={employees}
-              />
-              <EmployeeManagementPanel
-                language={language}
-                employees={managedEmployees}
-                options={employeeAdminOptions}
-                editor={employeeEditor}
-                busy={employeeAdminBusy}
-                accessCode={newAccessCode}
-                onNew={openNewEmployee}
-                onEdit={openEditEmployee}
-                onClose={() => setEmployeeEditor(null)}
-                onChange={setEmployeeEditor}
-                onSave={() => void saveEmployeeEditor()}
-                onResetCode={(employee) => void resetEmployeeAccessCode(employee)}
-                onDismissCode={() => setNewAccessCode(null)}
               />
               <AttendanceBoard
                 language={language}
