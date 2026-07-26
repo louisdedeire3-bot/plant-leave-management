@@ -1,27 +1,24 @@
 "use client";
 
 import {
-  ArrowLeft,
   Boxes,
   Check,
   ChevronRight,
   CircleAlert,
+  ClipboardList,
   Clock3,
-  Factory,
   FileCheck2,
+  Factory,
   History,
   LoaderCircle,
-  LogIn,
-  LogOut,
   PackageCheck,
+  Pencil,
+  Plus,
   RefreshCw,
   RotateCcw,
   Save,
   Search,
-  ShieldCheck,
   Truck,
-  UserRoundCheck,
-  UsersRound,
   Warehouse,
   X,
 } from "lucide-react";
@@ -29,8 +26,14 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 
 type PortalRole = "employee" | "supervisor" | "manager";
-type AppSection = "dashboard" | "new" | "history" | "stock";
+type AppSection = "dashboard" | "incoming" | "new" | "history" | "stock";
 type ScreeningStatus = "DRAFT" | "SUBMITTED" | "VALIDATED" | "CANCELLED";
+type IncomingLoadStatus =
+  | "AVAILABLE"
+  | "IN_SCREENING"
+  | "PENDING_VALIDATION"
+  | "SCREENED"
+  | "CANCELLED";
 type ScreeningProductType =
   | "STANDARD"
   | "RESTAURANT"
@@ -77,6 +80,23 @@ interface ScreeningEmployeeOption {
   position: string;
 }
 
+interface IncomingLoadRow {
+  id: string;
+  lotNumber: string;
+  farmerName: string;
+  farmName: string;
+  receivedDate: string;
+  receivedWeightKg: number;
+  truckRegistration: string;
+  transporterName: string;
+  driverName: string;
+  notes: string;
+  status: IncomingLoadStatus;
+  cancellationComment: string;
+  createdAt: string;
+  createdBy: string;
+}
+
 interface ScreeningProductRow {
   id?: string;
   productType: ScreeningProductType;
@@ -89,10 +109,16 @@ interface ScreeningProductRow {
 
 interface ScreeningLoadRow {
   id: string;
+  incomingLoadId: string | null;
   screeningDate: string;
   shift: "DAY" | "NIGHT";
   rawLotNumber: string;
   rawWeightKg: number;
+  farmerName: string;
+  farmName: string;
+  receivedDate: string | null;
+  truckRegistration: string;
+  transporterName: string;
   lineName: string;
   status: ScreeningStatus;
   notes: string;
@@ -123,6 +149,7 @@ interface ScreeningStockRow {
 }
 
 interface ScreeningBootstrap {
+  incomingLoads: IncomingLoadRow[];
   employees: ScreeningEmployeeOption[];
   loads: ScreeningLoadRow[];
   stock: ScreeningStockRow[];
@@ -130,15 +157,27 @@ interface ScreeningBootstrap {
 
 interface ScreeningSavePayload {
   loadId: string | null;
+  incomingLoadId: string;
   screeningDate: string;
   shift: "DAY" | "NIGHT";
-  rawLotNumber: string;
-  rawWeightKg: number;
   lineName: string;
   notes: string;
   employeeIds: string[];
   products: ScreeningProductRow[];
   submit: boolean;
+}
+
+interface IncomingLoadSavePayload {
+  loadId: string | null;
+  lotNumber: string;
+  farmerName: string;
+  farmName: string;
+  receivedDate: string;
+  receivedWeightKg: number;
+  truckRegistration: string;
+  transporterName: string;
+  driverName: string;
+  notes: string;
 }
 
 const productOrder: ScreeningProductType[] = [
@@ -164,38 +203,6 @@ const productShortLabels: Record<ScreeningProductType, string> = {
   SAND_ASH: "ASH",
   UNBURNT: "UNB",
 };
-
-const navItems: Array<{
-  id: AppSection;
-  label: string;
-  description: string;
-  icon: typeof Factory;
-}> = [
-  {
-    id: "dashboard",
-    label: "Control room",
-    description: "Today's screening activity",
-    icon: Factory,
-  },
-  {
-    id: "new",
-    label: "New screening load",
-    description: "Record a completed truck lot",
-    icon: Truck,
-  },
-  {
-    id: "history",
-    label: "Load history",
-    description: "Drafts, validation and traceability",
-    icon: History,
-  },
-  {
-    id: "stock",
-    label: "Product stock",
-    description: "Validated ERP product lots",
-    icon: Warehouse,
-  },
-];
 
 function isoDate(value: Date): string {
   const year = value.getFullYear();
@@ -270,180 +277,157 @@ function statusStyle(status: ScreeningStatus): string {
 const inputClass =
   "h-12 w-full border border-[#cfc4b7] bg-white px-4 text-sm font-semibold text-[#171310] outline-none transition placeholder:text-slate-400 focus:border-[#b86c2c] focus:ring-2 focus:ring-[#b86c2c]/15";
 
-export function ScreeningOperationsApp() {
+
+export interface ScreeningFactoryProfile {
+  accountId: string;
+  loginId: string;
+  employeeId: string | null;
+  displayName: string;
+  role: PortalRole;
+  department: string;
+  expiresAt: string;
+}
+
+type ScreeningModuleSection =
+  | "control"
+  | "incoming"
+  | "new"
+  | "history"
+  | "stock";
+
+export function ScreeningFactoryModule({
+  profile,
+  sessionToken,
+}: {
+  profile: ScreeningFactoryProfile;
+  sessionToken: string;
+}) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-  const [profile, setProfile] = useState<PortalProfile | null>(null);
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
-  const [section, setSection] = useState<AppSection>("dashboard");
+  const [section, setSection] = useState<ScreeningModuleSection>("control");
   const [data, setData] = useState<ScreeningBootstrap>({
+    incomingLoads: [],
     employees: [],
     loads: [],
     stock: [],
   });
-  const [booting, setBooting] = useState(true);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{
     kind: "success" | "error";
     text: string;
   } | null>(null);
 
-  const clearSession = useCallback(() => {
-    sessionStorage.removeItem("plant_portal_token");
-    setProfile(null);
-    setSessionToken(null);
-    setData({ employees: [], loads: [], stock: [] });
-    setSection("dashboard");
-  }, []);
-
-  const loadScreeningData = useCallback(
-    async (token: string) => {
-      if (!supabase) return;
-      setLoading(true);
-      setMessage(null);
-      try {
-        const { data: response, error } = await supabase.rpc(
-          "portal_screening_bootstrap",
-          {
-            p_token: token,
-            p_limit: 250,
-          },
-        );
-        if (error) throw error;
-        setData(
-          (response ?? {
-            employees: [],
-            loads: [],
-            stock: [],
-          }) as ScreeningBootstrap,
-        );
-      } catch (error) {
-        const text = errorText(error);
-        if (
-          text.toLowerCase().includes("session") ||
-          text.toLowerCase().includes("token")
-        ) {
-          clearSession();
-        } else {
-          setMessage({ kind: "error", text });
-        }
-      } finally {
-        setLoading(false);
-      }
-    },
-    [clearSession, supabase],
-  );
-
-  useEffect(() => {
-    async function restoreSession() {
-      const token = sessionStorage.getItem("plant_portal_token");
-      if (!token || !supabase) {
-        setBooting(false);
-        return;
-      }
-
-      try {
-        const { data: response, error } = await supabase.rpc("portal_me", {
-          p_token: token,
-        });
-        if (error) throw error;
-
-        const row = ((response ?? []) as ProfileRow[])[0];
-        if (!row) {
-          clearSession();
-          return;
-        }
-
-        const restored = mapProfile(row);
-        setProfile(restored);
-        setSessionToken(token);
-
-        if (restored.role !== "employee") {
-          await loadScreeningData(token);
-        }
-      } catch {
-        clearSession();
-      } finally {
-        setBooting(false);
-      }
-    }
-
-    void restoreSession();
-  }, [clearSession, loadScreeningData, supabase]);
-
-  useEffect(() => {
-    if (!profile || !sessionToken) return;
-
-    const inactivityMs = 30 * 60 * 1000;
-    let timer: ReturnType<typeof setTimeout>;
-
-    const expire = () => clearSession();
-    const reset = () => {
-      clearTimeout(timer);
-      timer = setTimeout(expire, inactivityMs);
-    };
-
-    const events: Array<keyof WindowEventMap> = [
-      "click",
-      "keydown",
-      "mousemove",
-      "touchstart",
-    ];
-
-    events.forEach((event) =>
-      window.addEventListener(event, reset, { passive: true }),
-    );
-    reset();
-
-    return () => {
-      clearTimeout(timer);
-      events.forEach((event) => window.removeEventListener(event, reset));
-    };
-  }, [clearSession, profile, sessionToken]);
-
-  async function login(loginId: string, accessCode: string): Promise<string | null> {
-    if (!supabase) return "Missing Supabase environment variables.";
-
+  const loadData = useCallback(async () => {
+    if (!supabase) return;
     setLoading(true);
     setMessage(null);
 
     try {
-      const { data: response, error } = await supabase.rpc("portal_login", {
-        p_login_id: loginId.trim().toUpperCase(),
-        p_access_code: accessCode.trim().toUpperCase(),
-      });
+      const { data: response, error } = await supabase.rpc(
+        "portal_screening_bootstrap",
+        {
+          p_token: sessionToken,
+          p_limit: 250,
+        },
+      );
+
       if (error) throw error;
 
-      const row = ((response ?? []) as LoginRow[])[0];
-      if (!row) return "Invalid login ID or password.";
-
-      const nextProfile = mapProfile(row);
-      sessionStorage.setItem("plant_portal_token", row.session_token);
-      setProfile(nextProfile);
-      setSessionToken(row.session_token);
-
-      if (nextProfile.role !== "employee") {
-        await loadScreeningData(row.session_token);
-      }
-
-      return null;
+      setData(
+        (response ?? {
+          incomingLoads: [],
+          employees: [],
+          loads: [],
+          stock: [],
+        }) as ScreeningBootstrap,
+      );
     } catch (error) {
-      return errorText(error);
+      setMessage({ kind: "error", text: errorText(error) });
+    } finally {
+      setLoading(false);
+    }
+  }, [sessionToken, supabase]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  async function saveIncomingLoad(
+    payload: IncomingLoadSavePayload,
+  ): Promise<boolean> {
+    if (!supabase) return false;
+    setLoading(true);
+    setMessage(null);
+
+    try {
+      const { error } = await supabase.rpc(
+        "portal_save_incoming_charcoal_load",
+        {
+          p_token: sessionToken,
+          p_load_id: payload.loadId,
+          p_lot_number: payload.lotNumber,
+          p_farmer_name: payload.farmerName,
+          p_farm_name: payload.farmName || null,
+          p_received_date: payload.receivedDate,
+          p_received_weight_kg: payload.receivedWeightKg,
+          p_truck_registration: payload.truckRegistration || null,
+          p_transporter_name: payload.transporterName || null,
+          p_driver_name: payload.driverName || null,
+          p_notes: payload.notes || null,
+        },
+      );
+
+      if (error) throw error;
+
+      setMessage({
+        kind: "success",
+        text: payload.loadId
+          ? "Incoming load updated."
+          : "Incoming farmer load recorded and available for Screening.",
+      });
+
+      await loadData();
+      return true;
+    } catch (error) {
+      setMessage({ kind: "error", text: errorText(error) });
+      return false;
     } finally {
       setLoading(false);
     }
   }
 
-  async function logout() {
-    const token = sessionToken;
-    clearSession();
-    if (token && supabase) {
-      await supabase.rpc("portal_logout", { p_token: token });
+  async function cancelIncomingLoad(
+    loadId: string,
+    comment: string,
+  ): Promise<boolean> {
+    if (!supabase) return false;
+    setLoading(true);
+    setMessage(null);
+
+    try {
+      const { error } = await supabase.rpc(
+        "portal_cancel_incoming_charcoal_load",
+        {
+          p_token: sessionToken,
+          p_load_id: loadId,
+          p_comment: comment || null,
+        },
+      );
+
+      if (error) throw error;
+
+      setMessage({ kind: "success", text: "Incoming load cancelled." });
+      await loadData();
+      return true;
+    } catch (error) {
+      setMessage({ kind: "error", text: errorText(error) });
+      return false;
+    } finally {
+      setLoading(false);
     }
   }
 
   async function saveLoad(payload: ScreeningSavePayload): Promise<boolean> {
-    if (!sessionToken || !supabase) return false;
-
+    if (!supabase) return false;
     setLoading(true);
     setMessage(null);
 
@@ -451,10 +435,9 @@ export function ScreeningOperationsApp() {
       const { error } = await supabase.rpc("portal_save_screening_load", {
         p_token: sessionToken,
         p_load_id: payload.loadId,
+        p_incoming_load_id: payload.incomingLoadId,
         p_screening_date: payload.screeningDate,
         p_shift: payload.shift,
-        p_raw_lot_number: payload.rawLotNumber,
-        p_raw_weight_kg: payload.rawWeightKg,
         p_line_name: payload.lineName || null,
         p_notes: payload.notes || null,
         p_employee_ids: payload.employeeIds,
@@ -476,7 +459,7 @@ export function ScreeningOperationsApp() {
           : "Screening draft saved.",
       });
 
-      await loadScreeningData(sessionToken);
+      await loadData();
       return true;
     } catch (error) {
       setMessage({ kind: "error", text: errorText(error) });
@@ -491,8 +474,7 @@ export function ScreeningOperationsApp() {
     decision: "VALIDATE" | "RETURN" | "CANCEL",
     comment: string,
   ): Promise<boolean> {
-    if (!sessionToken || !supabase) return false;
-
+    if (!supabase) return false;
     setLoading(true);
     setMessage(null);
 
@@ -516,7 +498,7 @@ export function ScreeningOperationsApp() {
               : "Load cancelled.",
       });
 
-      await loadScreeningData(sessionToken);
+      await loadData();
       return true;
     } catch (error) {
       setMessage({ kind: "error", text: errorText(error) });
@@ -526,413 +508,109 @@ export function ScreeningOperationsApp() {
     }
   }
 
-  if (booting) {
-    return (
-      <div className="grid min-h-screen place-items-center bg-[#12100e] text-white">
-        <div className="text-center">
-          <LoaderCircle className="mx-auto animate-spin text-[#d78a46]" size={34} />
-          <p className="mt-4 text-sm font-black uppercase tracking-[0.18em] text-[#cbbfb4]">
-            Starting screening control
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!profile || !sessionToken) {
-    return <ScreeningLogin loading={loading} onLogin={login} />;
-  }
-
-  if (profile.role === "employee") {
-    return (
-      <div className="grid min-h-screen place-items-center bg-[#12100e] px-4 text-white">
-        <div className="w-full max-w-xl border border-[#4d4036] bg-[#1b1714] p-8 shadow-2xl">
-          <CircleAlert size={42} className="text-amber-400" />
-          <h1 className="mt-5 text-3xl font-black uppercase">
-            Screening access restricted
-          </h1>
-          <p className="mt-3 text-sm leading-6 text-[#cbbfb4]">
-            This operational page is available only to Supervisors and Management.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <a
-              href="/"
-              className="inline-flex h-11 items-center gap-2 border border-[#6b584a] px-4 text-sm font-black uppercase text-white"
-            >
-              <ArrowLeft size={16} />
-              Workforce portal
-            </a>
-            <button
-              type="button"
-              onClick={() => void logout()}
-              className="inline-flex h-11 items-center gap-2 bg-[#d78a46] px-4 text-sm font-black uppercase text-[#171310]"
-            >
-              <LogOut size={16} />
-              Log out
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <ScreeningShell
-      profile={profile}
-      section={section}
-      setSection={setSection}
-      data={data}
-      loading={loading}
-      message={message}
-      onRefresh={() => loadScreeningData(sessionToken)}
-      onLogout={logout}
-      onSave={saveLoad}
-      onDecision={decideLoad}
-    />
-  );
-}
-
-function ScreeningLogin({
-  loading,
-  onLogin,
-}: {
-  loading: boolean;
-  onLogin: (loginId: string, password: string) => Promise<string | null>;
-}) {
-  const [loginId, setLoginId] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    const result = await onLogin(loginId, password);
-    if (result) setError(result);
-  }
-
-  return (
-    <div className="min-h-screen bg-[#12100e] text-white">
-      <div className="mx-auto grid min-h-screen max-w-[1500px] lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="relative hidden overflow-hidden border-r border-[#3c332d] bg-[#171310] p-12 lg:flex lg:flex-col lg:justify-between">
-          <div className="absolute inset-0 opacity-20">
-            <div className="absolute -left-16 top-24 h-72 w-72 rounded-full bg-[#d78a46] blur-[110px]" />
-            <div className="absolute bottom-16 right-10 h-80 w-80 rounded-full bg-[#34513d] blur-[130px]" />
-          </div>
-
-          <div className="relative">
-            <div className="inline-flex items-center gap-3 border border-[#51443a] bg-[#201a16] px-4 py-3">
-              <Factory size={22} className="text-[#d78a46]" />
-              <span className="text-xs font-black uppercase tracking-[0.2em] text-[#cbbfb4]">
-                Green Charcoal Namibia
-              </span>
-            </div>
-          </div>
-
-          <div className="relative max-w-3xl">
-            <p className="font-mono text-sm font-black uppercase tracking-[0.2em] text-[#d78a46]">
-              Factory operations
-            </p>
-            <h1 className="mt-4 text-6xl font-black uppercase leading-[0.94] tracking-[-0.04em]">
-              Screening
-              <br />
-              Control Room
-            </h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-[#bdb1a7]">
-              Complete truck-lot traceability from raw charcoal to validated ERP
-              product stock.
-            </p>
-          </div>
-
-          <div className="relative grid grid-cols-3 gap-3">
-            {[
-              ["1 load", "entered once"],
-              ["5 outputs", "tracked separately"],
-              ["100%", "lot traceability"],
-            ].map(([value, label]) => (
-              <div key={value} className="border border-[#3c332d] bg-[#1c1714] p-4">
-                <p className="font-mono text-xl font-black text-[#d78a46]">{value}</p>
-                <p className="mt-1 text-xs font-bold uppercase text-[#82766d]">
-                  {label}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="flex items-center justify-center px-5 py-12 sm:px-10">
-          <form
-            onSubmit={submit}
-            className="w-full max-w-lg border border-[#463b33] bg-[#1b1714] p-6 shadow-2xl sm:p-9"
-          >
-            <div className="grid h-14 w-14 place-items-center bg-[#d78a46] text-[#171310]">
-              <Truck size={27} />
-            </div>
-
-            <p className="mt-8 text-xs font-black uppercase tracking-[0.18em] text-[#d78a46]">
-              Secure operations portal
-            </p>
-            <h2 className="mt-2 text-3xl font-black uppercase">
-              Identify yourself
-            </h2>
-            <p className="mt-3 text-sm leading-6 text-[#9f9389]">
-              Supervisors and Management use the same credentials as the Workforce
-              portal.
-            </p>
-
-            <div className="mt-8 space-y-5">
-              <label className="block">
-                <span className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-[#bdb1a7]">
-                  Login ID
-                </span>
-                <input
-                  value={loginId}
-                  onChange={(event) => setLoginId(event.target.value.toUpperCase())}
-                  placeholder="GCN code or MANAGER"
-                  className="h-13 w-full border border-[#55473d] bg-[#12100e] px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-[#6f655d] focus:border-[#d78a46]"
-                  autoComplete="username"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-[#bdb1a7]">
-                  Password
-                </span>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="DDMMYY or management code"
-                  className="h-13 w-full border border-[#55473d] bg-[#12100e] px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-[#6f655d] focus:border-[#d78a46]"
-                  autoComplete="current-password"
-                />
-              </label>
-            </div>
-
-            {error && (
-              <div className="mt-5 border border-red-700 bg-red-950/40 px-4 py-3 text-sm font-bold text-red-200">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="mt-7 inline-flex h-12 w-full items-center justify-center gap-2 bg-[#d78a46] px-5 text-sm font-black uppercase text-[#171310] transition hover:bg-[#e49b58] disabled:opacity-60"
-            >
-              {loading ? (
-                <LoaderCircle size={18} className="animate-spin" />
-              ) : (
-                <LogIn size={18} />
-              )}
-              Open screening control
-            </button>
-
-            <a
-              href="/"
-              className="mt-4 inline-flex w-full items-center justify-center gap-2 border border-[#51443a] px-5 py-3 text-sm font-black uppercase text-[#bdb1a7] transition hover:text-white"
-            >
-              <ArrowLeft size={16} />
-              Back to Workforce
-            </a>
-          </form>
-        </section>
-      </div>
-    </div>
-  );
-}
-
-function ScreeningShell({
-  profile,
-  section,
-  setSection,
-  data,
-  loading,
-  message,
-  onRefresh,
-  onLogout,
-  onSave,
-  onDecision,
-}: {
-  profile: PortalProfile;
-  section: AppSection;
-  setSection: (section: AppSection) => void;
-  data: ScreeningBootstrap;
-  loading: boolean;
-  message: { kind: "success" | "error"; text: string } | null;
-  onRefresh: () => Promise<void>;
-  onLogout: () => Promise<void>;
-  onSave: (payload: ScreeningSavePayload) => Promise<boolean>;
-  onDecision: (
-    loadId: string,
-    decision: "VALIDATE" | "RETURN" | "CANCEL",
-    comment: string,
-  ) => Promise<boolean>;
-}) {
   const pendingCount = data.loads.filter(
     (load) => load.status === "SUBMITTED",
   ).length;
 
+  const sectionItems: Array<{
+    id: ScreeningModuleSection;
+    label: string;
+    managerOnly?: boolean;
+  }> = [
+    { id: "control", label: "Control room" },
+    { id: "incoming", label: "Incoming loads", managerOnly: true },
+    { id: "new", label: "New screening load" },
+    { id: "history", label: `Load history${pendingCount ? ` (${pendingCount})` : ""}` },
+    { id: "stock", label: "Product stock" },
+  ];
+
   return (
-    <div className="min-h-screen bg-[#ece7e1] text-[#171310]">
-      <header className="border-b border-[#3d332c] bg-[#171310] text-white">
-        <div className="mx-auto flex min-h-20 max-w-[1750px] items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-          <button
-            type="button"
-            onClick={() => setSection("dashboard")}
-            className="flex items-center gap-3 text-left"
-          >
-            <span className="grid h-12 w-12 place-items-center bg-[#d78a46] text-[#171310]">
-              <Factory size={25} />
-            </span>
-            <span>
-              <span className="block text-lg font-black uppercase tracking-tight">
-                Screening Control
-              </span>
-              <span className="block text-[11px] font-bold uppercase tracking-[0.15em] text-[#9f9389]">
-                Green Charcoal Namibia
-              </span>
-            </span>
-          </button>
-
-          <div className="flex items-center gap-2">
-            <div className="hidden border border-[#40362f] bg-[#211b17] px-4 py-2 text-right sm:block">
-              <p className="text-sm font-black">{profile.displayName}</p>
-              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#d78a46]">
-                {profile.role} · {profile.loginId}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => void onRefresh()}
-              disabled={loading}
-              className="grid h-11 w-11 place-items-center border border-[#51443a] bg-[#211b17] text-[#cbbfb4] transition hover:border-[#d78a46] hover:text-white disabled:opacity-50"
-              title="Refresh"
-            >
-              <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
-            </button>
-
-            <a
-              href="/"
-              className="hidden h-11 items-center gap-2 border border-[#51443a] bg-[#211b17] px-4 text-xs font-black uppercase text-[#cbbfb4] transition hover:border-[#d78a46] hover:text-white md:inline-flex"
-            >
-              <ArrowLeft size={16} />
-              Workforce
-            </a>
-
-            <button
-              type="button"
-              onClick={() => void onLogout()}
-              className="inline-flex h-11 items-center gap-2 bg-[#d78a46] px-4 text-xs font-black uppercase text-[#171310] transition hover:bg-[#e49b58]"
-            >
-              <LogOut size={16} />
-              <span className="hidden sm:inline">Log out</span>
-            </button>
-          </div>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 border border-[#cfc4b7] bg-white p-3">
+        <div className="flex flex-wrap gap-2">
+          {sectionItems
+            .filter((item) => !item.managerOnly || profile.role === "manager")
+            .map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setSection(item.id)}
+                className={`px-4 py-2.5 text-xs font-black uppercase tracking-[0.08em] transition ${
+                  section === item.id
+                    ? "bg-[#171310] text-white"
+                    : "border border-[#d8cec3] bg-[#f6f2ed] text-[#5f5147] hover:border-[#b86c2c]"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
         </div>
-      </header>
 
-      <div className="mx-auto grid max-w-[1750px] grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="border-r border-[#2f2823] bg-[#201a16] p-4 text-white lg:min-h-[calc(100vh-81px)] lg:p-5">
-          <p className="px-3 pb-3 pt-1 text-[10px] font-black uppercase tracking-[0.2em] text-[#756b63]">
-            Operations
-          </p>
-
-          <nav className="grid grid-cols-2 gap-2 lg:grid-cols-1">
-            {navItems.map(({ id, label, description, icon: Icon }) => {
-              const active = section === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setSection(id)}
-                  className={`flex min-h-20 items-center gap-3 border px-4 py-3 text-left transition ${
-                    active
-                      ? "border-[#d78a46] bg-[#d78a46] text-[#171310]"
-                      : "border-[#3f352e] bg-[#171310] text-[#d1c5bb] hover:border-[#7d5c43]"
-                  }`}
-                >
-                  <Icon size={21} className="shrink-0" />
-                  <span>
-                    <span className="block text-sm font-black uppercase">
-                      {label}
-                      {id === "history" && pendingCount > 0 && (
-                        <span className="ml-2 bg-amber-200 px-2 py-0.5 text-[10px] text-amber-950">
-                          {pendingCount}
-                        </span>
-                      )}
-                    </span>
-                    <span
-                      className={`mt-1 hidden text-xs leading-4 lg:block ${
-                        active ? "text-[#4a3020]" : "text-[#756b63]"
-                      }`}
-                    >
-                      {description}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </nav>
-
-          <div className="mt-5 hidden border border-[#3f352e] bg-[#171310] p-4 lg:block">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#756b63]">
-              Access scope
-            </p>
-            <p className="mt-2 text-sm font-black">{profile.department}</p>
-            <p className="mt-4 text-xs leading-5 text-[#756b63]">
-              One completed raw load creates five traceable product outputs.
-            </p>
-          </div>
-        </aside>
-
-        <main className="min-w-0 p-4 sm:p-6 lg:p-8">
-          {message && (
-            <div
-              className={`mb-5 border px-4 py-3 text-sm font-bold ${
-                message.kind === "success"
-                  ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                  : "border-red-300 bg-red-50 text-red-800"
-              }`}
-            >
-              {message.text}
-            </div>
-          )}
-
-          {section === "dashboard" && (
-            <ControlRoom
-              profile={profile}
-              data={data}
-              loading={loading}
-              onOpenNew={() => setSection("new")}
-              onOpenHistory={() => setSection("history")}
-              onOpenStock={() => setSection("stock")}
-              onDecision={onDecision}
-            />
-          )}
-
-          {section === "new" && (
-            <ScreeningForm
-              data={data}
-              loading={loading}
-              onSave={onSave}
-              onOpenHistory={() => setSection("history")}
-            />
-          )}
-
-          {section === "history" && (
-            <ScreeningHistory
-              role={profile.role}
-              data={data}
-              loading={loading}
-              onEdit={() => setSection("new")}
-              onDecision={onDecision}
-            />
-          )}
-
-          {section === "stock" && <ScreeningStock data={data} />}
-        </main>
+        <button
+          type="button"
+          onClick={() => void loadData()}
+          disabled={loading}
+          className="inline-flex h-10 items-center gap-2 border border-[#6f6156] bg-white px-4 text-xs font-black uppercase disabled:opacity-50"
+        >
+          <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+          Refresh
+        </button>
       </div>
+
+      {message && (
+        <div
+          className={`border px-4 py-3 text-sm font-bold ${
+            message.kind === "success"
+              ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+              : "border-red-300 bg-red-50 text-red-800"
+          }`}
+        >
+          {message.text}
+        </div>
+      )}
+
+      {section === "control" && (
+        <ControlRoom
+          profile={profile}
+          data={data}
+          loading={loading}
+          onOpenIncoming={() => setSection("incoming")}
+          onOpenNew={() => setSection("new")}
+          onOpenHistory={() => setSection("history")}
+          onOpenStock={() => setSection("stock")}
+          onDecision={decideLoad}
+        />
+      )}
+
+      {section === "incoming" && profile.role === "manager" && (
+        <IncomingLoadsManagement
+          data={data}
+          loading={loading}
+          onSave={saveIncomingLoad}
+          onCancel={cancelIncomingLoad}
+        />
+      )}
+
+      {section === "new" && (
+        <ScreeningForm
+          data={data}
+          loading={loading}
+          onSave={saveLoad}
+          onOpenHistory={() => setSection("history")}
+        />
+      )}
+
+      {section === "history" && (
+        <ScreeningHistory
+          role={profile.role}
+          data={data}
+          loading={loading}
+          onEdit={() => setSection("new")}
+          onDecision={decideLoad}
+        />
+      )}
+
+      {section === "stock" && <ScreeningStock data={data} />}
     </div>
   );
 }
@@ -941,6 +619,7 @@ function ControlRoom({
   profile,
   data,
   loading,
+  onOpenIncoming,
   onOpenNew,
   onOpenHistory,
   onOpenStock,
@@ -949,6 +628,7 @@ function ControlRoom({
   profile: PortalProfile;
   data: ScreeningBootstrap;
   loading: boolean;
+  onOpenIncoming: () => void;
   onOpenNew: () => void;
   onOpenHistory: () => void;
   onOpenStock: () => void;
@@ -962,6 +642,9 @@ function ControlRoom({
   const todayLoads = data.loads.filter((load) => load.screeningDate === today);
   const pending = data.loads.filter((load) => load.status === "SUBMITTED");
   const drafts = data.loads.filter((load) => load.status === "DRAFT");
+  const availableIncoming = data.incomingLoads.filter(
+    (load) => load.status === "AVAILABLE",
+  );
   const todayOutput = todayLoads.reduce(
     (sum, load) => sum + Number(load.totalOutputKg || 0),
     0,
@@ -999,8 +682,14 @@ function ControlRoom({
         </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {[
+          {
+            label: "Incoming available",
+            value: availableIncoming.length,
+            detail: "Farmer loads ready to select",
+            icon: ClipboardList,
+          },
           {
             label: "Loads today",
             value: todayLoads.length,
@@ -1183,6 +872,24 @@ function ControlRoom({
             )}
           </div>
 
+          {profile.role === "manager" && (
+            <button
+              type="button"
+              onClick={onOpenIncoming}
+              className="flex w-full items-center justify-between border border-[#cfc4b7] bg-white p-5 text-left transition hover:border-[#b86c2c]"
+            >
+              <span>
+                <span className="block text-[11px] font-black uppercase tracking-[0.14em] text-[#b86c2c]">
+                  Incoming loads
+                </span>
+                <span className="mt-1 block text-xl font-black uppercase">
+                  Record a farmer truck
+                </span>
+              </span>
+              <ChevronRight size={22} />
+            </button>
+          )}
+
           <button
             type="button"
             onClick={onOpenStock}
@@ -1204,6 +911,367 @@ function ControlRoom({
   );
 }
 
+function incomingStatusStyle(status: IncomingLoadStatus): string {
+  return {
+    AVAILABLE: "border-emerald-300 bg-emerald-100 text-emerald-900",
+    IN_SCREENING: "border-blue-300 bg-blue-100 text-blue-900",
+    PENDING_VALIDATION: "border-amber-300 bg-amber-100 text-amber-900",
+    SCREENED: "border-slate-300 bg-slate-200 text-slate-800",
+    CANCELLED: "border-red-300 bg-red-100 text-red-800",
+  }[status];
+}
+
+function IncomingLoadsManagement({
+  data,
+  loading,
+  onSave,
+  onCancel,
+}: {
+  data: ScreeningBootstrap;
+  loading: boolean;
+  onSave: (payload: IncomingLoadSavePayload) => Promise<boolean>;
+  onCancel: (loadId: string, comment: string) => Promise<boolean>;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [lotNumber, setLotNumber] = useState("");
+  const [farmerName, setFarmerName] = useState("");
+  const [farmName, setFarmName] = useState("");
+  const [receivedDate, setReceivedDate] = useState(isoDate(new Date()));
+  const [receivedWeightKg, setReceivedWeightKg] = useState("");
+  const [truckRegistration, setTruckRegistration] = useState("");
+  const [transporterName, setTransporterName] = useState("");
+  const [driverName, setDriverName] = useState("");
+  const [notes, setNotes] = useState("");
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return data.incomingLoads;
+    return data.incomingLoads.filter((load) =>
+      `${load.lotNumber} ${load.farmerName} ${load.farmName} ${load.truckRegistration} ${load.transporterName}`
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [data.incomingLoads, search]);
+
+  function resetForm() {
+    setEditingId(null);
+    setLotNumber("");
+    setFarmerName("");
+    setFarmName("");
+    setReceivedDate(isoDate(new Date()));
+    setReceivedWeightKg("");
+    setTruckRegistration("");
+    setTransporterName("");
+    setDriverName("");
+    setNotes("");
+  }
+
+  function editLoad(load: IncomingLoadRow) {
+    if (load.status !== "AVAILABLE") return;
+    setEditingId(load.id);
+    setLotNumber(load.lotNumber);
+    setFarmerName(load.farmerName);
+    setFarmName(load.farmName);
+    setReceivedDate(load.receivedDate);
+    setReceivedWeightKg(String(load.receivedWeightKg));
+    setTruckRegistration(load.truckRegistration);
+    setTransporterName(load.transporterName);
+    setDriverName(load.driverName);
+    setNotes(load.notes);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const success = await onSave({
+      loadId: editingId,
+      lotNumber: lotNumber.trim().toUpperCase(),
+      farmerName: farmerName.trim(),
+      farmName: farmName.trim(),
+      receivedDate,
+      receivedWeightKg: Number(receivedWeightKg || 0),
+      truckRegistration: truckRegistration.trim().toUpperCase(),
+      transporterName: transporterName.trim(),
+      driverName: driverName.trim(),
+      notes: notes.trim(),
+    });
+
+    if (success) resetForm();
+  }
+
+  async function cancelLoad(load: IncomingLoadRow) {
+    const comment = window.prompt(
+      `Reason for cancelling incoming load ${load.lotNumber}:`,
+    );
+    if (comment === null) return;
+    await onCancel(load.id, comment.trim());
+  }
+
+  const availableCount = data.incomingLoads.filter(
+    (load) => load.status === "AVAILABLE",
+  ).length;
+
+  return (
+    <div className="space-y-6">
+      <section className="border border-[#2f2823] bg-[#171310] p-6 text-white">
+        <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-[#d78a46]">
+          Management receipt
+        </p>
+        <h1 className="mt-2 text-4xl font-black uppercase tracking-tight">
+          Incoming farmer loads
+        </h1>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-[#a89c92]">
+          Management records the truck once. Screening later selects the existing
+          farmer lot and receives its weight and supplier details automatically.
+        </p>
+      </section>
+
+      <form onSubmit={submit} className="border border-[#cfc4b7] bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d8cec3] bg-[#f4efe9] px-5 py-4">
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#b86c2c]">
+              {editingId ? "Edit available load" : "New incoming load"}
+            </p>
+            <p className="mt-1 text-sm font-semibold text-slate-600">
+              Required fields: farmer lot, farmer/supplier, date and received weight.
+            </p>
+          </div>
+          {editingId && (
+            <button
+              type="button"
+              onClick={resetForm}
+              className="text-xs font-black uppercase text-[#8a4e22] underline underline-offset-4"
+            >
+              Stop editing
+            </button>
+          )}
+        </div>
+
+        <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
+          <Field label="Farmer lot number">
+            <input
+              value={lotNumber}
+              onChange={(event) => setLotNumber(event.target.value.toUpperCase())}
+              placeholder="Existing farmer lot number"
+              className={inputClass}
+              required
+            />
+          </Field>
+
+          <Field label="Farmer / supplier">
+            <input
+              value={farmerName}
+              onChange={(event) => setFarmerName(event.target.value)}
+              placeholder="Farmer or supplier name"
+              className={inputClass}
+              required
+            />
+          </Field>
+
+          <Field label="Farm name">
+            <input
+              value={farmName}
+              onChange={(event) => setFarmName(event.target.value)}
+              placeholder="Optional farm name"
+              className={inputClass}
+            />
+          </Field>
+
+          <Field label="Date received">
+            <input
+              type="date"
+              value={receivedDate}
+              onChange={(event) => setReceivedDate(event.target.value)}
+              className={inputClass}
+              required
+            />
+          </Field>
+
+          <Field label="Received weight (kg)">
+            <input
+              type="number"
+              min="0.001"
+              step="0.001"
+              value={receivedWeightKg}
+              onChange={(event) => setReceivedWeightKg(event.target.value)}
+              placeholder="0"
+              className={inputClass}
+              required
+            />
+          </Field>
+
+          <Field label="Truck registration">
+            <input
+              value={truckRegistration}
+              onChange={(event) =>
+                setTruckRegistration(event.target.value.toUpperCase())
+              }
+              placeholder="Optional"
+              className={inputClass}
+            />
+          </Field>
+
+          <Field label="Transporter">
+            <input
+              value={transporterName}
+              onChange={(event) => setTransporterName(event.target.value)}
+              placeholder="Optional transporter"
+              className={inputClass}
+            />
+          </Field>
+
+          <Field label="Driver">
+            <input
+              value={driverName}
+              onChange={(event) => setDriverName(event.target.value)}
+              placeholder="Optional driver"
+              className={inputClass}
+            />
+          </Field>
+
+          <div className="md:col-span-2 xl:col-span-3">
+            <Field label="Comments">
+              <input
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                placeholder="Quality, delivery or unloading notes"
+                className={inputClass}
+              />
+            </Field>
+          </div>
+
+          <div className="flex items-end">
+            <button
+              type="submit"
+              disabled={loading}
+              className="inline-flex h-12 w-full items-center justify-center gap-2 bg-[#d78a46] px-5 text-sm font-black uppercase text-[#171310] hover:bg-[#e49b58] disabled:opacity-50"
+            >
+              {loading ? (
+                <LoaderCircle size={18} className="animate-spin" />
+              ) : editingId ? (
+                <Save size={18} />
+              ) : (
+                <Plus size={18} />
+              )}
+              {editingId ? "Save changes" : "Add incoming load"}
+            </button>
+          </div>
+        </div>
+      </form>
+
+      <section className="border border-[#cfc4b7] bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d8cec3] px-5 py-4">
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#b86c2c]">
+              Incoming register
+            </p>
+            <h2 className="mt-1 text-2xl font-black uppercase">
+              {availableCount} available for Screening
+            </h2>
+          </div>
+
+          <div className="relative w-full max-w-md">
+            <Search
+              size={17}
+              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+            />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search lot, farmer, truck or transporter"
+              className={`${inputClass} pl-11`}
+            />
+          </div>
+        </div>
+
+        {filtered.length === 0 ? (
+          <div className="grid min-h-56 place-items-center p-8 text-center">
+            <div>
+              <ClipboardList size={38} className="mx-auto text-[#b9ada2]" />
+              <p className="mt-4 font-black uppercase text-slate-700">
+                No incoming loads found
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-[#201a16] text-white">
+                <tr className="text-left text-[10px] font-black uppercase tracking-[0.08em]">
+                  <th className="px-4 py-4">Farmer lot</th>
+                  <th className="px-4 py-4">Farmer / Farm</th>
+                  <th className="px-4 py-4">Received</th>
+                  <th className="px-4 py-4 text-right">Weight</th>
+                  <th className="px-4 py-4">Truck / Transporter</th>
+                  <th className="px-4 py-4">Status</th>
+                  <th className="px-4 py-4 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((load) => (
+                  <tr key={load.id} className="border-b border-[#e4dcd3]">
+                    <td className="px-4 py-4 font-mono text-xs font-black">
+                      {load.lotNumber}
+                    </td>
+                    <td className="px-4 py-4">
+                      <p className="font-black">{load.farmerName}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {load.farmName || "—"}
+                      </p>
+                    </td>
+                    <td className="px-4 py-4">{formatDate(load.receivedDate)}</td>
+                    <td className="px-4 py-4 text-right font-mono font-black">
+                      {formatKg(load.receivedWeightKg)}
+                    </td>
+                    <td className="px-4 py-4">
+                      <p className="font-bold">{load.truckRegistration || "—"}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {load.transporterName || "—"}
+                      </p>
+                    </td>
+                    <td className="px-4 py-4">
+                      <span
+                        className={`border px-2 py-1 text-[10px] font-black uppercase ${incomingStatusStyle(load.status)}`}
+                      >
+                        {load.status.replaceAll("_", " ")}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4">
+                      {load.status === "AVAILABLE" && (
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => editLoad(load)}
+                            className="grid h-9 w-9 place-items-center border border-[#817267] bg-white hover:border-[#b86c2c]"
+                            title="Edit"
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={loading}
+                            onClick={() => void cancelLoad(load)}
+                            className="grid h-9 w-9 place-items-center border border-red-400 bg-red-50 text-red-700 disabled:opacity-50"
+                            title="Cancel incoming load"
+                          >
+                            <X size={15} />
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 function ScreeningForm({
   data,
   loading,
@@ -1216,17 +1284,28 @@ function ScreeningForm({
   onOpenHistory: () => void;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [incomingLoadId, setIncomingLoadId] = useState("");
   const [screeningDate, setScreeningDate] = useState(isoDate(new Date()));
   const [shift, setShift] = useState<"DAY" | "NIGHT">("DAY");
-  const [rawLotNumber, setRawLotNumber] = useState("");
-  const [rawWeightKg, setRawWeightKg] = useState("");
   const [lineName, setLineName] = useState("");
   const [notes, setNotes] = useState("");
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
   const [products, setProducts] = useState<ScreeningProductRow[]>(blankProducts());
 
-  const numericRawWeight = Number(rawWeightKg || 0);
+  const availableIncomingLoads = useMemo(
+    () =>
+      data.incomingLoads.filter((load) => load.status === "AVAILABLE"),
+    [data.incomingLoads],
+  );
+
+  const selectedIncomingLoad = useMemo(
+    () =>
+      data.incomingLoads.find((load) => load.id === incomingLoadId) ?? null,
+    [data.incomingLoads, incomingLoadId],
+  );
+
+  const numericRawWeight = Number(selectedIncomingLoad?.receivedWeightKg ?? 0);
   const totalOutput = products.reduce(
     (sum, product) => sum + Number(product.totalWeightKg || 0),
     0,
@@ -1247,10 +1326,9 @@ function ScreeningForm({
 
   function resetForm() {
     setEditingId(null);
+    setIncomingLoadId("");
     setScreeningDate(isoDate(new Date()));
     setShift("DAY");
-    setRawLotNumber("");
-    setRawWeightKg("");
     setLineName("");
     setNotes("");
     setEmployeeSearch("");
@@ -1278,12 +1356,13 @@ function ScreeningForm({
   }
 
   async function submitForm(submit: boolean) {
+    if (!incomingLoadId) return;
+
     const success = await onSave({
       loadId: editingId,
+      incomingLoadId,
       screeningDate,
       shift,
-      rawLotNumber: rawLotNumber.trim(),
-      rawWeightKg: numericRawWeight,
       lineName: lineName.trim(),
       notes: notes.trim(),
       employeeIds: selectedEmployeeIds,
@@ -1304,22 +1383,37 @@ function ScreeningForm({
           Completed screening load
         </p>
         <h1 className="mt-2 text-4xl font-black uppercase tracking-tight">
-          Record truck lot
+          Select and screen farmer lot
         </h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-[#a89c92]">
-          One form per completed farmer/truck lot. All big bags of one product
-          share the same ERP lot number.
+          Choose a load already entered by Management. The farmer lot, received
+          weight and delivery details are filled automatically.
         </p>
       </section>
 
       <section className="border border-[#cfc4b7] bg-white">
         <div className="border-b border-[#d8cec3] bg-[#f4efe9] px-5 py-4">
           <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#b86c2c]">
-            01 · Load identity
+            01 · Select incoming farmer load
           </p>
         </div>
 
-        <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 p-5 xl:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,0.7fr))]">
+          <Field label="Incoming farmer load">
+            <select
+              value={incomingLoadId}
+              onChange={(event) => setIncomingLoadId(event.target.value)}
+              className={inputClass}
+            >
+              <option value="">Select an available load</option>
+              {availableIncomingLoads.map((load) => (
+                <option key={load.id} value={load.id}>
+                  {load.lotNumber} · {load.farmerName} · {formatKg(load.receivedWeightKg)}
+                </option>
+              ))}
+            </select>
+          </Field>
+
           <Field label="Screening date">
             <input
               type="date"
@@ -1342,29 +1436,6 @@ function ScreeningForm({
             </select>
           </Field>
 
-          <Field label="Raw truck / farmer lot">
-            <input
-              value={rawLotNumber}
-              onChange={(event) =>
-                setRawLotNumber(event.target.value.toUpperCase())
-              }
-              placeholder="Existing farmer lot number"
-              className={inputClass}
-            />
-          </Field>
-
-          <Field label="Raw weight (kg)">
-            <input
-              type="number"
-              min="0"
-              step="0.001"
-              value={rawWeightKg}
-              onChange={(event) => setRawWeightKg(event.target.value)}
-              placeholder="0"
-              className={inputClass}
-            />
-          </Field>
-
           <Field label="Screening line / machine">
             <input
               value={lineName}
@@ -1373,7 +1444,35 @@ function ScreeningForm({
               className={inputClass}
             />
           </Field>
+        </div>
 
+        {availableIncomingLoads.length === 0 && (
+          <div className="border-t border-amber-300 bg-amber-50 px-5 py-4 text-sm font-bold text-amber-900">
+            No incoming farmer load is currently available. Management must record
+            the truck first.
+          </div>
+        )}
+
+        {selectedIncomingLoad && (
+          <div className="grid gap-3 border-t border-[#d8cec3] bg-[#201a16] p-5 text-white sm:grid-cols-2 xl:grid-cols-5">
+            {[
+              ["Farmer lot", selectedIncomingLoad.lotNumber],
+              ["Farmer / Farm", `${selectedIncomingLoad.farmerName}${selectedIncomingLoad.farmName ? ` · ${selectedIncomingLoad.farmName}` : ""}`],
+              ["Received", formatDate(selectedIncomingLoad.receivedDate)],
+              ["Raw weight", formatKg(selectedIncomingLoad.receivedWeightKg)],
+              ["Truck", selectedIncomingLoad.truckRegistration || "—"],
+            ].map(([label, value]) => (
+              <div key={label} className="border border-[#43382f] bg-[#171310] p-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.1em] text-[#81766d]">
+                  {label}
+                </p>
+                <p className="mt-2 text-sm font-black text-[#e0d7cf]">{value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="border-t border-[#d8cec3] p-5">
           <Field label="Comments">
             <input
               value={notes}
@@ -1576,7 +1675,7 @@ function ScreeningForm({
 
         <button
           type="button"
-          disabled={loading}
+          disabled={loading || !incomingLoadId}
           onClick={() => void submitForm(false)}
           className="inline-flex h-12 items-center gap-2 border border-[#2f2823] bg-white px-5 text-sm font-black uppercase disabled:opacity-50"
         >
@@ -1590,7 +1689,7 @@ function ScreeningForm({
 
         <button
           type="button"
-          disabled={loading}
+          disabled={loading || !incomingLoadId}
           onClick={() => void submitForm(true)}
           className="inline-flex h-12 items-center gap-2 bg-[#d78a46] px-6 text-sm font-black uppercase text-[#171310] hover:bg-[#e49b58] disabled:opacity-50"
         >
@@ -1733,6 +1832,10 @@ function ScreeningHistory({
                   <p className="mt-2 text-sm font-semibold text-slate-500">
                     {formatDate(load.screeningDate)} · {load.shift} shift
                     {load.lineName ? ` · ${load.lineName}` : ""}
+                  </p>
+                  <p className="mt-1 text-sm font-bold text-[#8a4e22]">
+                    {load.farmerName || "Farmer not recorded"}
+                    {load.farmName ? ` · ${load.farmName}` : ""}
                   </p>
                   <p className="mt-2 text-xs text-slate-500">
                     Created by <strong>{load.createdBy || "—"}</strong> ·{" "}
