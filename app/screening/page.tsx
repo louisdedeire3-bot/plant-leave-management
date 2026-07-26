@@ -1,5 +1,5 @@
-import { ScreeningOperationsApp } from "@/components/screening-operations-app";
+import { redirect } from "next/navigation";
 
 export default function ScreeningPage() {
-  return <ScreeningOperationsApp />;
+  redirect("/factory?module=screening");
 }
