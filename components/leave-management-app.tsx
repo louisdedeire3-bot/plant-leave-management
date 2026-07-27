@@ -57,9 +57,15 @@ type ManpowerStatus = "GREEN" | "ORANGE" | "RED" | "NOT_ASSESSED";
 type LeaveType = "ANNUAL" | "COMPASSIONATE" | "UNPAID" | "MIXED";
 type ShortfallAction = "SPLIT" | "ALL_UNPAID";
 type PortalEmployee = Employee & {
+  annualEntitlement: number;
   sickEntitlement: number;
   sickUsed: number;
   sickBalance: number;
+  familyEntitlement: number;
+  familyUsed: number;
+  familyBalance: number;
+  workWeekDays: number | null;
+  balanceAsOf: string | null;
 };
 type CalendarScale = "day" | "week" | "month";
 type Decision = "approve" | "reject";
@@ -108,9 +114,15 @@ interface EmployeeRow {
   earned: number | string | null;
   used: number | string | null;
   balance: number | string | null;
-  sick_entitlement: number | string | null;
-  sick_used: number | string | null;
-  sick_balance: number | string | null;
+  annual_entitlement?: number | string | null;
+  sick_entitlement?: number | string | null;
+  sick_used?: number | string | null;
+  sick_balance?: number | string | null;
+  family_entitlement?: number | string | null;
+  family_used?: number | string | null;
+  family_balance?: number | string | null;
+  work_week_days?: number | string | null;
+  balance_as_of?: string | null;
 }
 
 interface LeaveRow {
@@ -528,6 +540,12 @@ const uiCopyEn = {
   unpaidLeaveDays: "Unpaid leave days",
   sickLeaveBalance: "Sick leave balance",
   sickLeaveUsed: "Sick leave used",
+  annualLeaveBalance: "Annual Leave balance",
+  familyLeaveBalance: "Family Leave balance",
+  workWeek: "Work week",
+  daysPerWeek: "days per week",
+  balanceAsOf: "Balances as of",
+  sageBalanceSource: "Official Sage VIP Payroll balances",
   automaticUnpaidTitle: "Automatic Unpaid Leave",
   automaticUnpaidText: "Your annual leave balance is not enough. This request will automatically be submitted as Unpaid Leave.",
   convertedToUnpaid: "Annual balance insufficient — request submitted as Unpaid Leave.",
@@ -684,6 +702,12 @@ const uiCopy = {
     unpaidLeaveDays: "Onbetaalde verlofdae",
     sickLeaveBalance: "Siekteverlofsaldo",
     sickLeaveUsed: "Siekteverlof gebruik",
+    annualLeaveBalance: "Jaarlikse verlofsaldo",
+    familyLeaveBalance: "Gesinsverlofsaldo",
+    workWeek: "Werksweek",
+    daysPerWeek: "dae per week",
+    balanceAsOf: "Saldo's soos op",
+    sageBalanceSource: "Amptelike Sage VIP Payroll-saldo's",
     automaticUnpaidTitle: "Outomatiese onbetaalde verlof",
     automaticUnpaidText: "Jou jaarlikse verlofsaldo is onvoldoende. Hierdie versoek sal outomaties as onbetaalde verlof ingedien word.",
     convertedToUnpaid: "Onvoldoende jaarlikse verlofsaldo — versoek as onbetaalde verlof ingedien.",
@@ -769,6 +793,23 @@ function asNumber(value: number | string | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function formatLeaveBalance(value: number): string {
+  return new Intl.NumberFormat("en-NA", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 4,
+  }).format(value);
+}
+
+function balanceWithEntitlement(
+  balance: number,
+  entitlement: number,
+  daysLabel: string,
+): string {
+  const current = formatLeaveBalance(balance);
+  if (entitlement <= 0) return `${current} ${daysLabel}`;
+  return `${current} / ${formatLeaveBalance(entitlement)} ${daysLabel}`;
+}
+
 function normalizeStatus(value: string): RequestStatus {
   if (
     value === "pending_supervisor" ||
@@ -813,9 +854,18 @@ function mapEmployee(row: EmployeeRow): PortalEmployee {
     earned: asNumber(row.earned),
     used: asNumber(row.used),
     balance: asNumber(row.balance),
+    annualEntitlement: asNumber(row.annual_entitlement),
     sickEntitlement: asNumber(row.sick_entitlement),
     sickUsed: asNumber(row.sick_used),
     sickBalance: asNumber(row.sick_balance),
+    familyEntitlement: asNumber(row.family_entitlement),
+    familyUsed: asNumber(row.family_used),
+    familyBalance: asNumber(row.family_balance),
+    workWeekDays:
+      row.work_week_days === null || row.work_week_days === undefined
+        ? null
+        : asNumber(row.work_week_days),
+    balanceAsOf: row.balance_as_of ?? null,
   };
 }
 
@@ -1447,18 +1497,55 @@ export function LeaveManagementApp() {
 
   async function reclassifyAbsence(absenceId: string, classification: AbsenceClassification) {
     if (!sessionToken || !supabase) return;
+
+    const previousClassification =
+      absences.find((absence) => absence.id === absenceId)?.classification ??
+      "UNJUSTIFIED";
+
     setAbsenceBusy(absenceId);
     setMessage(null);
+
+    // Update the row immediately so the controlled dropdown does not snap back
+    // to UNJUSTIFIED while Supabase is processing the request.
+    setAbsences((current) =>
+      current.map((absence) =>
+        absence.id === absenceId
+          ? { ...absence, classification }
+          : absence,
+      ),
+    );
+
     try {
-      const { error } = await supabase.rpc("portal_reclassify_absence", {
+      const { data, error } = await supabase.rpc("portal_reclassify_absence", {
         p_token: sessionToken,
         p_absence_id: absenceId,
         p_classification: classification,
-        p_manager_comment: null,
+        p_manager_comment: "",
       });
+
       if (error) throw error;
+
+      const savedClassification = String(data ?? classification).toUpperCase();
+      if (savedClassification !== classification) {
+        throw new Error(
+          `Supabase returned ${savedClassification} instead of ${classification}.`,
+        );
+      }
+
+      setMessage({
+        kind: "success",
+        text: `Absence changed to ${classification.replaceAll("_", " ")}.`,
+      });
+
       await loadData(sessionToken);
     } catch (error) {
+      setAbsences((current) =>
+        current.map((absence) =>
+          absence.id === absenceId
+            ? { ...absence, classification: previousClassification }
+            : absence,
+        ),
+      );
       setMessage({ kind: "error", text: errorText(error) });
     } finally {
       setAbsenceBusy(null);
@@ -1520,6 +1607,16 @@ export function LeaveManagementApp() {
               <p className="text-sm font-black text-slate-950">{profile.displayName}</p>
               <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#b87333]">{profile.role} · {profile.loginId}</p>
             </div>
+            {profile.role === "manager" && (
+              <a
+                href="/factory"
+                className="hidden h-10 items-center gap-2 rounded-xl border border-[#4a382a] bg-[#fff4e5] px-3 text-sm font-black text-[#6f3f1d] transition hover:border-[#d99a55] hover:bg-[#fde7cc] md:inline-flex"
+                title="Factory Portal"
+              >
+                <LayoutDashboard size={16} />
+                Factory Portal
+              </a>
+            )}
             <button
               onClick={() => sessionToken && void loadData(sessionToken)}
               className="grid h-10 w-10 place-items-center rounded-xl border border-[#ded5ca] bg-white text-slate-500 transition hover:border-[#d99a55] hover:text-[#b87333]"
@@ -1621,6 +1718,7 @@ export function LeaveManagementApp() {
             <EmployeeManagementPanel
               language={language}
               employees={managedEmployees}
+              balanceEmployees={employees}
               options={employeeAdminOptions}
               editor={employeeEditor}
               busy={employeeAdminBusy}
@@ -2280,15 +2378,29 @@ function EmployeeView(props: EmployeeViewProps) {
           </div>
         </div>
         <div className="grid gap-px bg-slate-200 sm:grid-cols-2 xl:grid-cols-5">
-          <StatStrip label={t.availableBalance} value={`${employee.balance} ${t.days}`} accent="text-emerald-600" />
+          <StatStrip
+            label={u.annualLeaveBalance}
+            value={balanceWithEntitlement(employee.balance, employee.annualEntitlement, t.days)}
+            accent={employee.balance < 0 ? "text-red-700" : "text-emerald-600"}
+          />
           <StatStrip
             label={u.sickLeaveBalance}
-            value={`${employee.sickBalance} / ${employee.sickEntitlement} ${t.days}`}
+            value={balanceWithEntitlement(employee.sickBalance, employee.sickEntitlement, t.days)}
             accent="text-violet-700"
           />
-          <StatStrip label={t.earnedThisYear} value={`${employee.earned} ${t.days}`} />
-          <StatStrip label={t.usedThisYear} value={`${employee.used} ${t.days}`} accent="text-rose-600" />
-          <StatStrip label={t.department} value={employee.department} />
+          <StatStrip
+            label={u.familyLeaveBalance}
+            value={balanceWithEntitlement(employee.familyBalance, employee.familyEntitlement, t.days)}
+            accent="text-amber-700"
+          />
+          <StatStrip
+            label={u.workWeek}
+            value={employee.workWeekDays ? `${employee.workWeekDays} ${u.daysPerWeek}` : "—"}
+          />
+          <StatStrip
+            label={u.balanceAsOf}
+            value={employee.balanceAsOf ? formatDate(employee.balanceAsOf) : "—"}
+          />
         </div>
       </section>
 
@@ -2918,6 +3030,7 @@ function OvertimeKpi({
 function EmployeeManagementPanel({
   language,
   employees,
+  balanceEmployees,
   options,
   editor,
   busy,
@@ -2932,6 +3045,7 @@ function EmployeeManagementPanel({
 }: {
   language: AppLanguage;
   employees: AdminEmployeeRow[];
+  balanceEmployees: PortalEmployee[];
   options: EmployeeAdminOptions;
   editor: EmployeeEditorState | null;
   busy: boolean;
@@ -2963,6 +3077,8 @@ function EmployeeManagementPanel({
   });
 
   const supervisors = employees.filter((employee) => employee.active && (employee.portal_role === "supervisor" || employee.portal_role === "manager"));
+  const importedBalanceDate =
+    balanceEmployees.find((employee) => employee.balanceAsOf)?.balanceAsOf ?? null;
 
   return (
     <section className="border border-slate-300 bg-white shadow-xl">
@@ -2971,6 +3087,11 @@ function EmployeeManagementPanel({
           <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">{u.employeeMasterData}</p>
           <h2 className="mt-1 text-2xl font-black uppercase">{u.employees}</h2>
           <p className="mt-1 text-sm text-slate-400">{u.employeeManagementIntro}</p>
+          {importedBalanceDate && (
+            <p className="mt-2 font-mono text-xs font-black uppercase tracking-[0.1em] text-emerald-400">
+              {u.sageBalanceSource} · {u.balanceAsOf} {formatDate(importedBalanceDate)}
+            </p>
+          )}
         </div>
         <button type="button" onClick={onNew} className="inline-flex items-center gap-2 bg-blue-600 px-4 py-3 text-sm font-black uppercase hover:bg-blue-500">
           <Plus size={17} /> {u.addEmployee}
@@ -3001,22 +3122,48 @@ function EmployeeManagementPanel({
         </div>
       </div>
 
-      <div className="max-h-[520px] overflow-auto">
-        <table className="w-full min-w-[1050px] border-collapse">
+      <div className="max-h-[560px] overflow-auto">
+        <table className="w-full min-w-[1500px] border-collapse">
           <thead className="sticky top-0 z-10 bg-slate-200 text-left font-mono text-xs font-black uppercase tracking-[0.1em] text-slate-600">
-            <tr><th className="px-4 py-3">{u.employee}</th><th className="px-4 py-3">{localizedCopy[language].department}</th><th className="px-4 py-3">{u.positionRole}</th><th className="px-4 py-3">{u.skills}</th><th className="px-4 py-3">{u.access}</th><th className="px-4 py-3">{u.actions}</th></tr>
+            <tr>
+              <th className="px-4 py-3">{u.employee}</th>
+              <th className="px-4 py-3">{localizedCopy[language].department}</th>
+              <th className="px-4 py-3">{u.positionRole}</th>
+              <th className="px-4 py-3">{u.annualLeave}</th>
+              <th className="px-4 py-3">{u.sickLeave}</th>
+              <th className="px-4 py-3">{u.compassionateLeave}</th>
+              <th className="px-4 py-3">{u.workWeek}</th>
+              <th className="px-4 py-3">{u.skills}</th>
+              <th className="px-4 py-3">{u.access}</th>
+              <th className="px-4 py-3">{u.actions}</th>
+            </tr>
           </thead>
           <tbody>
-            {filtered.map((employee) => (
-              <tr key={employee.id} className={`border-t border-slate-200 ${employee.active ? "bg-white" : "bg-slate-100 opacity-70"}`}>
-                <td className="px-4 py-3"><p className="font-black text-slate-950">{employee.first_name} {employee.surname}</p><p className="font-mono text-xs font-bold text-slate-500">{employee.employee_code} · {employee.active ? u.active : u.inactive}</p></td>
-                <td className="px-4 py-3 font-semibold text-slate-700">{employee.department}</td>
-                <td className="px-4 py-3"><p className="font-black text-slate-900">{employee.position_title || "—"}</p><p className="text-xs font-semibold uppercase text-slate-500">{employee.primary_role || "No primary role"} · {employee.portal_role}</p></td>
-                <td className="px-4 py-3"><div className="flex max-w-[330px] flex-wrap gap-1">{(employee.skill_codes ?? []).map((skill) => <span key={skill} className="bg-slate-100 px-2 py-1 font-mono text-[10px] font-black text-slate-700">{skill.replaceAll("_"," ")}</span>)}</div></td>
-                <td className="px-4 py-3"><span className={`inline-flex px-2 py-1 text-xs font-black ${employee.has_account ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-600"}`}>{employee.has_account ? u.portalReady : u.noAccount}</span></td>
-                <td className="px-4 py-3"><div className="flex gap-2"><button onClick={() => onEdit(employee)} className="inline-flex items-center gap-1 border border-slate-300 bg-white px-3 py-2 text-xs font-black uppercase hover:border-blue-500 hover:text-blue-700"><Pencil size={14}/> {u.edit}</button><button disabled={!employee.has_account || busy} onClick={() => onResetCode(employee)} className="inline-flex items-center gap-1 border border-slate-300 bg-white px-3 py-2 text-xs font-black uppercase hover:border-amber-500 hover:text-amber-700 disabled:opacity-40"><KeyRound size={14}/> {u.resetCode}</button></div></td>
-              </tr>
-            ))}
+            {filtered.map((employee) => {
+              const balance = balanceEmployees.find((item) => item.id === employee.id);
+              return (
+                <tr key={employee.id} className={`border-t border-slate-200 ${employee.active ? "bg-white" : "bg-slate-100 opacity-70"}`}>
+                  <td className="px-4 py-3"><p className="font-black text-slate-950">{employee.first_name} {employee.surname}</p><p className="font-mono text-xs font-bold text-slate-500">{employee.employee_code} · {employee.active ? u.active : u.inactive}</p></td>
+                  <td className="px-4 py-3 font-semibold text-slate-700">{employee.department}</td>
+                  <td className="px-4 py-3"><p className="font-black text-slate-900">{employee.position_title || "—"}</p><p className="text-xs font-semibold uppercase text-slate-500">{employee.primary_role || "No primary role"} · {employee.portal_role}</p></td>
+                  <td className={`px-4 py-3 font-mono text-sm font-black ${balance && balance.balance < 0 ? "text-red-700" : "text-emerald-700"}`}>
+                    {balance ? balanceWithEntitlement(balance.balance, balance.annualEntitlement, localizedCopy[language].days) : "—"}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-sm font-black text-violet-700">
+                    {balance ? balanceWithEntitlement(balance.sickBalance, balance.sickEntitlement, localizedCopy[language].days) : "—"}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-sm font-black text-amber-700">
+                    {balance ? balanceWithEntitlement(balance.familyBalance, balance.familyEntitlement, localizedCopy[language].days) : "—"}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-sm font-black text-slate-700">
+                    {balance?.workWeekDays ? `${balance.workWeekDays} ${u.daysPerWeek}` : "—"}
+                  </td>
+                  <td className="px-4 py-3"><div className="flex max-w-[330px] flex-wrap gap-1">{(employee.skill_codes ?? []).map((skill) => <span key={skill} className="bg-slate-100 px-2 py-1 font-mono text-[10px] font-black text-slate-700">{skill.replaceAll("_"," ")}</span>)}</div></td>
+                  <td className="px-4 py-3"><span className={`inline-flex px-2 py-1 text-xs font-black ${employee.has_account ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-600"}`}>{employee.has_account ? u.portalReady : u.noAccount}</span></td>
+                  <td className="px-4 py-3"><div className="flex gap-2"><button onClick={() => onEdit(employee)} className="inline-flex items-center gap-1 border border-slate-300 bg-white px-3 py-2 text-xs font-black uppercase hover:border-blue-500 hover:text-blue-700"><Pencil size={14}/> {u.edit}</button><button disabled={!employee.has_account || busy} onClick={() => onResetCode(employee)} className="inline-flex items-center gap-1 border border-slate-300 bg-white px-3 py-2 text-xs font-black uppercase hover:border-amber-500 hover:text-amber-700 disabled:opacity-40"><KeyRound size={14}/> {u.resetCode}</button></div></td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
