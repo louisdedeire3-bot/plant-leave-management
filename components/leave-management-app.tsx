@@ -939,18 +939,32 @@ function calculateLeaveDaysWithHolidays(
   startDate: string,
   endDate: string,
   publicHolidays: PublicHolidayRow[],
+  workWeekDays: number | null,
 ): number {
   if (!startDate || !endDate || endDate < startDate) return 0;
 
-  const holidayDates = new Set(publicHolidays.map((holiday) => holiday.holiday_date));
+  const holidayDates = new Set(
+    publicHolidays.map((holiday) => holiday.holiday_date),
+  );
   const current = new Date(`${startDate}T00:00:00`);
   const end = new Date(`${endDate}T00:00:00`);
+  const worksSaturday = workWeekDays !== 5;
   let days = 0;
 
   while (current <= end) {
     const date = isoDate(current);
-    const isSunday = current.getDay() === 0;
-    if (!isSunday && !holidayDates.has(date)) days += 1;
+    const dayOfWeek = current.getDay();
+    const isSunday = dayOfWeek === 0;
+    const isNonWorkingSaturday = dayOfWeek === 6 && !worksSaturday;
+
+    if (
+      !isSunday
+      && !isNonWorkingSaturday
+      && !holidayDates.has(date)
+    ) {
+      days += 1;
+    }
+
     current.setDate(current.getDate() + 1);
   }
 
@@ -1168,8 +1182,22 @@ export function LeaveManagementApp() {
   );
 
   const requestedDays = useMemo(
-    () => Math.max(0, calculateLeaveDaysWithHolidays(startDate, endDate, publicHolidays)),
-    [endDate, publicHolidays, startDate],
+    () =>
+      Math.max(
+        0,
+        calculateLeaveDaysWithHolidays(
+          startDate,
+          endDate,
+          publicHolidays,
+          currentEmployee?.workWeekDays ?? 6,
+        ),
+      ),
+    [
+      currentEmployee?.workWeekDays,
+      endDate,
+      publicHolidays,
+      startDate,
+    ],
   );
 
   const selectedLeaveHolidays = useMemo(
@@ -2513,7 +2541,13 @@ function EmployeeView(props: EmployeeViewProps) {
                   </div>
                 </div>
               )}
-              <InfoNote text={`${t.leaveRule} ${u.publicHolidaysExcluded}`} />
+              <InfoNote
+                text={`${
+                  employee.workWeekDays === 5
+                    ? "Your 5-day work week counts Monday to Friday. Saturday and Sunday are not deducted."
+                    : "Your 6-day work week counts Monday to Saturday. Sunday is not deducted."
+                } ${u.publicHolidaysExcluded}`}
+              />
               <SubmitButton saving={saving} label={t.submitRequest} />
             </form>
           </section>
