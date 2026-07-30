@@ -1036,6 +1036,8 @@ export function LeaveManagementApp() {
   const [overtimeEnd, setOvertimeEnd] = useState("");
   const [breakMinutes, setBreakMinutes] = useState(0);
   const [overtimeReason, setOvertimeReason] = useState("");
+  const [editingLeaveId, setEditingLeaveId] = useState<string | null>(null);
+  const [editingOvertimeId, setEditingOvertimeId] = useState<string | null>(null);
   const [reportDateFrom, setReportDateFrom] = useState(
     isoDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
   );
@@ -1061,6 +1063,8 @@ export function LeaveManagementApp() {
     setManagedEmployees([]);
     setEmployeeEditor(null);
     setNewAccessCode(null);
+    setEditingLeaveId(null);
+    setEditingOvertimeId(null);
     setMessage(null);
     setDatabaseError(null);
     setView("employee");
@@ -1261,6 +1265,50 @@ export function LeaveManagementApp() {
     if (token && supabase) await supabase.rpc("portal_logout", { p_token: token });
   }
 
+  function resetLeaveForm() {
+    setEditingLeaveId(null);
+    setStartDate("");
+    setEndDate("");
+    setComment("");
+    setLeaveType("ANNUAL");
+    setShortfallAction("SPLIT");
+  }
+
+  function startEditingLeave(request: LeaveWithManpower) {
+    setModule("leave");
+    setEditingLeaveId(request.id);
+    setStartDate(request.startDate);
+    setEndDate(request.endDate);
+    setComment(request.comment);
+    setLeaveType(
+      request.leaveType === "MIXED" ? "ANNUAL" : request.leaveType,
+    );
+    setShortfallAction(request.shortfallAction ?? "SPLIT");
+    setMessage(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function resetOvertimeForm() {
+    setEditingOvertimeId(null);
+    setOvertimeDate(isoDate(new Date()));
+    setOvertimeStart("");
+    setOvertimeEnd("");
+    setBreakMinutes(0);
+    setOvertimeReason("");
+  }
+
+  function startEditingOvertime(request: OvertimeRequest) {
+    setModule("overtime");
+    setEditingOvertimeId(request.id);
+    setOvertimeDate(request.overtimeDate);
+    setOvertimeStart(request.startTime);
+    setOvertimeEnd(request.endTime);
+    setBreakMinutes(request.breakMinutes);
+    setOvertimeReason(request.reason);
+    setMessage(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   async function submitLeave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!sessionToken || !supabase || !currentEmployee) return;
@@ -1274,24 +1322,29 @@ export function LeaveManagementApp() {
     setSaving(true);
     setMessage(null);
     try {
-      const { error } = await supabase.rpc("portal_submit_leave", {
+      const functionName = editingLeaveId
+        ? "portal_update_leave_request"
+        : "portal_submit_leave";
+
+      const { error } = await supabase.rpc(functionName, {
         p_token: sessionToken,
+        ...(editingLeaveId ? { p_request_id: editingLeaveId } : {}),
         p_start_date: startDate,
         p_end_date: endDate,
         p_comment: comment.trim() || null,
         p_leave_type: leaveType,
         p_shortfall_action: shortfallAction,
       });
+
       if (error) throw error;
-      setStartDate("");
-      setEndDate("");
-      setComment("");
-      setLeaveType("ANNUAL");
-      setShortfallAction("SPLIT");
+
+      const wasEditing = Boolean(editingLeaveId);
+      resetLeaveForm();
       setMessage({
         kind: "success",
-        text:
-          hasAnnualShortfall && shortfallAction === "SPLIT"
+        text: wasEditing
+          ? "Leave request updated."
+          : hasAnnualShortfall && shortfallAction === "SPLIT"
             ? u.splitRequestSubmitted
             : hasAnnualShortfall
               ? u.convertedToUnpaid
@@ -1315,20 +1368,30 @@ export function LeaveManagementApp() {
     setSaving(true);
     setMessage(null);
     try {
-      const { error } = await supabase.rpc("portal_submit_overtime", {
+      const functionName = editingOvertimeId
+        ? "portal_update_overtime_request"
+        : "portal_submit_overtime";
+
+      const { error } = await supabase.rpc(functionName, {
         p_token: sessionToken,
+        ...(editingOvertimeId ? { p_request_id: editingOvertimeId } : {}),
         p_overtime_date: overtimeDate,
         p_start_time: overtimeStart,
         p_end_time: overtimeEnd,
         p_break_minutes: breakMinutes,
         p_reason: overtimeReason.trim() || null,
       });
+
       if (error) throw error;
-      setOvertimeStart("");
-      setOvertimeEnd("");
-      setBreakMinutes(0);
-      setOvertimeReason("");
-      setMessage({ kind: "success", text: t.overtimeSubmitted });
+
+      const wasEditing = Boolean(editingOvertimeId);
+      resetOvertimeForm();
+      setMessage({
+        kind: "success",
+        text: wasEditing
+          ? "Overtime request updated."
+          : t.overtimeSubmitted,
+      });
       await loadData(sessionToken);
     } catch (error) {
       setMessage({ kind: "error", text: errorText(error) });
@@ -1737,6 +1800,13 @@ export function LeaveManagementApp() {
               calculatedOvertime={calculatedOvertime}
               submitOvertime={submitOvertime}
               saving={saving}
+              employeeRole={profile.role}
+              editingLeaveId={editingLeaveId}
+              editingOvertimeId={editingOvertimeId}
+              onEditLeave={startEditingLeave}
+              onCancelLeaveEdit={resetLeaveForm}
+              onEditOvertime={startEditingOvertime}
+              onCancelOvertimeEdit={resetOvertimeForm}
               employeeRequests={employeeRequests}
               employeeOvertime={employeeOvertime}
             />
@@ -2364,12 +2434,64 @@ interface EmployeeViewProps {
   calculatedOvertime: number;
   submitOvertime: (event: FormEvent<HTMLFormElement>) => void;
   saving: boolean;
+  employeeRole: PortalRole;
+  editingLeaveId: string | null;
+  editingOvertimeId: string | null;
+  onEditLeave: (request: LeaveWithManpower) => void;
+  onCancelLeaveEdit: () => void;
+  onEditOvertime: (request: OvertimeRequest) => void;
+  onCancelOvertimeEdit: () => void;
   employeeRequests: LeaveWithManpower[];
   employeeOvertime: OvertimeRequest[];
 }
 
 function EmployeeView(props: EmployeeViewProps) {
-  const { language, t, employee, module, setModule, startDate, endDate, comment, leaveType, shortfallAction, setShortfallAction, setLeaveType, setStartDate, setEndDate, setComment, requestedDays, leaveHolidays, submitLeave, overtimeDate, overtimeStart, overtimeEnd, breakMinutes, overtimeReason, setOvertimeDate, setOvertimeStart, setOvertimeEnd, setBreakMinutes, setOvertimeReason, calculatedOvertime, submitOvertime, saving, employeeRequests, employeeOvertime } = props;
+  const {
+    language,
+    t,
+    employee,
+    module,
+    setModule,
+    startDate,
+    endDate,
+    comment,
+    leaveType,
+    shortfallAction,
+    setShortfallAction,
+    setLeaveType,
+    setStartDate,
+    setEndDate,
+    setComment,
+    requestedDays,
+    leaveHolidays,
+    submitLeave,
+    overtimeDate,
+    overtimeStart,
+    overtimeEnd,
+    breakMinutes,
+    overtimeReason,
+    setOvertimeDate,
+    setOvertimeStart,
+    setOvertimeEnd,
+    setBreakMinutes,
+    setOvertimeReason,
+    calculatedOvertime,
+    submitOvertime,
+    saving,
+    employeeRole,
+    editingLeaveId,
+    editingOvertimeId,
+    onEditLeave,
+    onCancelLeaveEdit,
+    onEditOvertime,
+    onCancelOvertimeEdit,
+    employeeRequests,
+    employeeOvertime,
+  } = props;
+
+  const canEditOwnRequest = (status: RequestStatus) =>
+    status === "pending_supervisor"
+    || (employeeRole === "supervisor" && status === "pending_manager");
   const annualShortfall =
     leaveType === "ANNUAL" && requestedDays > employee.balance;
   const availableWholeAnnualDays = Math.max(0, Math.floor(employee.balance));
@@ -2440,7 +2562,26 @@ function EmployeeView(props: EmployeeViewProps) {
       {module === "leave" ? (
         <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
           <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-soft sm:p-8">
-            <SectionHeader eyebrow={t.annualLeaveTab} title={u.requestLeaveGeneral} icon={CalendarDays} />
+            <SectionHeader
+              eyebrow={t.annualLeaveTab}
+              title={editingLeaveId ? "Edit leave request" : u.requestLeaveGeneral}
+              icon={CalendarDays}
+            />
+            {editingLeaveId && (
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">
+                <span>
+                  This request can be changed until the next approver accepts it.
+                </span>
+                <button
+                  type="button"
+                  onClick={onCancelLeaveEdit}
+                  className="inline-flex items-center gap-2 underline underline-offset-4"
+                >
+                  <X size={15} />
+                  Cancel editing
+                </button>
+              </div>
+            )}
             <form onSubmit={submitLeave} className="mt-7 space-y-5">
               <Field label={u.leaveType}>
                 <select
@@ -2548,17 +2689,40 @@ function EmployeeView(props: EmployeeViewProps) {
                     : "Your 6-day work week counts Monday to Saturday. Sunday is not deducted."
                 } ${u.publicHolidaysExcluded}`}
               />
-              <SubmitButton saving={saving} label={t.submitRequest} />
+              <SubmitButton
+                saving={saving}
+                label={editingLeaveId ? "Save leave changes" : t.submitRequest}
+              />
             </form>
           </section>
           <HistoryCard title={t.myRequests} icon={CalendarDays} emptyText={t.noRequests}>
             {employeeRequests.map((request) => (
               <article key={request.id} className="rounded-2xl border border-slate-200 p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <div><p className="font-black text-slate-950">{formatDate(request.startDate)} → {formatDate(request.endDate)}</p><p className="mt-1 text-sm text-slate-500">{request.leaveType === "MIXED"
-                      ? `${u.mixedLeave} · ${request.annualDays} ${t.days} AL + ${request.unpaidDays} ${t.days} UL`
-                      : `${request.leaveType.replace("_", " ")} · ${request.days} ${t.days}`}{request.comment ? ` · ${request.comment}` : ""}</p></div>
-                  <StatusBadge status={request.status} language={language} />
+                  <div>
+                    <p className="font-black text-slate-950">
+                      {formatDate(request.startDate)} → {formatDate(request.endDate)}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {request.leaveType === "MIXED"
+                        ? `${u.mixedLeave} · ${request.annualDays} ${t.days} AL + ${request.unpaidDays} ${t.days} UL`
+                        : `${request.leaveType.replace("_", " ")} · ${request.days} ${t.days}`}
+                      {request.comment ? ` · ${request.comment}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <StatusBadge status={request.status} language={language} />
+                    {canEditOwnRequest(request.status) && (
+                      <button
+                        type="button"
+                        onClick={() => onEditLeave(request)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-[#d99a55] bg-[#fff4e5] px-3 py-2 text-xs font-black text-[#7c481f] transition hover:bg-[#fde7cc]"
+                      >
+                        <Pencil size={14} />
+                        Edit
+                      </button>
+                    )}
+                  </div>
                 </div>
               </article>
             ))}
@@ -2567,7 +2731,26 @@ function EmployeeView(props: EmployeeViewProps) {
       ) : (
         <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
           <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-soft sm:p-8">
-            <SectionHeader eyebrow={t.overtimeTab} title={t.requestOvertime} icon={TimerReset} />
+            <SectionHeader
+              eyebrow={t.overtimeTab}
+              title={editingOvertimeId ? "Edit overtime request" : t.requestOvertime}
+              icon={TimerReset}
+            />
+            {editingOvertimeId && (
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">
+                <span>
+                  This request can be changed until the next approver accepts it.
+                </span>
+                <button
+                  type="button"
+                  onClick={onCancelOvertimeEdit}
+                  className="inline-flex items-center gap-2 underline underline-offset-4"
+                >
+                  <X size={15} />
+                  Cancel editing
+                </button>
+              </div>
+            )}
             <form onSubmit={submitOvertime} className="mt-7 space-y-5">
               <Field label={t.overtimeDate}><input required type="date" value={overtimeDate} onChange={(event) => setOvertimeDate(event.target.value)} className={inputClass} /></Field>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -2589,15 +2772,42 @@ function EmployeeView(props: EmployeeViewProps) {
               </Field>
               <CalculationTile label={t.totalHours} value={`${calculatedOvertime} ${t.hours}`} />
               <InfoNote text={t.overtimeRule} />
-              <SubmitButton saving={saving} label={t.submitOvertime} />
+              <SubmitButton
+                saving={saving}
+                label={
+                  editingOvertimeId
+                    ? "Save overtime changes"
+                    : t.submitOvertime
+                }
+              />
             </form>
           </section>
           <HistoryCard title={t.myOvertime} icon={TimerReset} emptyText={t.noOvertime}>
             {employeeOvertime.map((request) => (
               <article key={request.id} className="rounded-2xl border border-slate-200 p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <div><p className="font-black text-slate-950">{formatDate(request.overtimeDate)} · {request.startTime} → {request.endTime}</p><p className="mt-1 text-sm text-slate-500">{request.totalHours} {t.hours} · break {request.breakMinutes} min{request.reason ? ` · ${request.reason}` : ""}</p></div>
-                  <StatusBadge status={request.status} language={language} />
+                  <div>
+                    <p className="font-black text-slate-950">
+                      {formatDate(request.overtimeDate)} · {request.startTime} → {request.endTime}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {request.totalHours} {t.hours} · break {request.breakMinutes} min
+                      {request.reason ? ` · ${request.reason}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <StatusBadge status={request.status} language={language} />
+                    {canEditOwnRequest(request.status) && (
+                      <button
+                        type="button"
+                        onClick={() => onEditOvertime(request)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-[#d99a55] bg-[#fff4e5] px-3 py-2 text-xs font-black text-[#7c481f] transition hover:bg-[#fde7cc]"
+                      >
+                        <Pencil size={14} />
+                        Edit
+                      </button>
+                    )}
+                  </div>
                 </div>
               </article>
             ))}
