@@ -80,6 +80,8 @@ interface ScreeningEmployeeOption {
   position: string;
 }
 
+type IncomingErpLots = Record<ScreeningProductType, string>;
+
 interface IncomingLoadRow {
   id: string;
   lotNumber: string;
@@ -91,6 +93,7 @@ interface IncomingLoadRow {
   transporterName: string;
   driverName: string;
   notes: string;
+  erpLots: IncomingErpLots;
   status: IncomingLoadStatus;
   cancellationComment: string;
   createdAt: string;
@@ -178,6 +181,7 @@ interface IncomingLoadSavePayload {
   transporterName: string;
   driverName: string;
   notes: string;
+  erpLots: IncomingErpLots;
 }
 
 const productOrder: ScreeningProductType[] = [
@@ -256,13 +260,35 @@ function mapProfile(row: LoginRow | ProfileRow): PortalProfile {
   };
 }
 
-function blankProducts(): ScreeningProductRow[] {
+function blankIncomingErpLots(): IncomingErpLots {
+  return {
+    STANDARD: "",
+    RESTAURANT: "",
+    FINES: "",
+    SAND_ASH: "",
+    UNBURNT: "",
+  };
+}
+
+function hasCompleteIncomingErpLots(load: IncomingLoadRow): boolean {
+  return productOrder.every(
+    (productType) => Boolean(load.erpLots?.[productType]?.trim()),
+  );
+}
+
+function productsFromIncomingLoad(
+  load: IncomingLoadRow | null,
+): ScreeningProductRow[] {
   return productOrder.map((productType) => ({
     productType,
-    erpLotNumber: "",
+    erpLotNumber: load?.erpLots?.[productType] ?? "",
     bigBagCount: 0,
     totalWeightKg: 0,
   }));
+}
+
+function blankProducts(): ScreeningProductRow[] {
+  return productsFromIncomingLoad(null);
 }
 
 function statusStyle(status: ScreeningStatus): string {
@@ -373,6 +399,7 @@ export function ScreeningFactoryModule({
           p_transporter_name: payload.transporterName || null,
           p_driver_name: payload.driverName || null,
           p_notes: payload.notes || null,
+          p_erp_lots: payload.erpLots,
         },
       );
 
@@ -942,13 +969,18 @@ function IncomingLoadsManagement({
   const [transporterName, setTransporterName] = useState("");
   const [driverName, setDriverName] = useState("");
   const [notes, setNotes] = useState("");
+  const [erpLots, setErpLots] = useState<IncomingErpLots>(
+    blankIncomingErpLots(),
+  );
   const [search, setSearch] = useState("");
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return data.incomingLoads;
     return data.incomingLoads.filter((load) =>
-      `${load.lotNumber} ${load.farmerName} ${load.farmName} ${load.truckRegistration} ${load.transporterName}`
+      `${load.lotNumber} ${load.farmerName} ${load.farmName} ${load.truckRegistration} ${load.transporterName} ${productOrder
+        .map((productType) => load.erpLots?.[productType] ?? "")
+        .join(" ")}`
         .toLowerCase()
         .includes(query),
     );
@@ -965,6 +997,7 @@ function IncomingLoadsManagement({
     setTransporterName("");
     setDriverName("");
     setNotes("");
+    setErpLots(blankIncomingErpLots());
   }
 
   function editLoad(load: IncomingLoadRow) {
@@ -979,6 +1012,10 @@ function IncomingLoadsManagement({
     setTransporterName(load.transporterName);
     setDriverName(load.driverName);
     setNotes(load.notes);
+    setErpLots({
+      ...blankIncomingErpLots(),
+      ...load.erpLots,
+    });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -996,6 +1033,12 @@ function IncomingLoadsManagement({
       transporterName: transporterName.trim(),
       driverName: driverName.trim(),
       notes: notes.trim(),
+      erpLots: Object.fromEntries(
+        productOrder.map((productType) => [
+          productType,
+          erpLots[productType].trim().toUpperCase(),
+        ]),
+      ) as IncomingErpLots,
     });
 
     if (success) resetForm();
@@ -1023,8 +1066,9 @@ function IncomingLoadsManagement({
           Incoming farmer loads
         </h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-[#a89c92]">
-          Management records the truck once. Screening later selects the existing
-          farmer lot and receives its weight and supplier details automatically.
+          Management records the truck once and assigns all five ERP product lots.
+          Screening later selects the existing farmer lot and receives every lot
+          number automatically.
         </p>
       </section>
 
@@ -1035,7 +1079,7 @@ function IncomingLoadsManagement({
               {editingId ? "Edit available load" : "New incoming load"}
             </p>
             <p className="mt-1 text-sm font-semibold text-slate-600">
-              Required fields: farmer lot, farmer/supplier, date and received weight.
+              Farmer details, received weight and all five ERP product lots are required.
             </p>
           </div>
           {editingId && (
@@ -1131,6 +1175,40 @@ function IncomingLoadsManagement({
             />
           </Field>
 
+          <div className="md:col-span-2 xl:col-span-4">
+            <div className="border border-[#d8cec3] bg-[#f7f2ec]">
+              <div className="border-b border-[#d8cec3] bg-[#201a16] px-4 py-3 text-white">
+                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#d78a46]">
+                  ERP product lots · required
+                </p>
+                <p className="mt-1 text-xs font-semibold text-[#b8aca2]">
+                  One ERP lot for each product created from this farmer load.
+                </p>
+              </div>
+              <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
+                {productOrder.map((productType) => (
+                  <Field
+                    key={productType}
+                    label={`${productShortLabels[productType]} · ${productLabels[productType]}`}
+                  >
+                    <input
+                      value={erpLots[productType]}
+                      onChange={(event) =>
+                        setErpLots((current) => ({
+                          ...current,
+                          [productType]: event.target.value.toUpperCase(),
+                        }))
+                      }
+                      placeholder="ERP lot number"
+                      className={inputClass}
+                      required
+                    />
+                  </Field>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <div className="md:col-span-2 xl:col-span-3">
             <Field label="Comments">
               <input
@@ -1180,7 +1258,7 @@ function IncomingLoadsManagement({
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search lot, farmer, truck or transporter"
+              placeholder="Search farmer lot, ERP lot, farmer, truck or transporter"
               className={`${inputClass} pl-11`}
             />
           </div>
@@ -1205,6 +1283,7 @@ function IncomingLoadsManagement({
                   <th className="px-4 py-4">Received</th>
                   <th className="px-4 py-4 text-right">Weight</th>
                   <th className="px-4 py-4">Truck / Transporter</th>
+                  <th className="px-4 py-4">ERP product lots</th>
                   <th className="px-4 py-4">Status</th>
                   <th className="px-4 py-4 text-right">Action</th>
                 </tr>
@@ -1230,6 +1309,21 @@ function IncomingLoadsManagement({
                       <p className="mt-1 text-xs text-slate-500">
                         {load.transporterName || "—"}
                       </p>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="grid gap-1">
+                        {productOrder.map((productType) => (
+                          <p
+                            key={productType}
+                            className="font-mono text-[10px] font-black"
+                          >
+                            <span className="mr-2 text-[#b86c2c]">
+                              {productShortLabels[productType]}
+                            </span>
+                            {load.erpLots?.[productType] || "MISSING"}
+                          </p>
+                        ))}
+                      </div>
                     </td>
                     <td className="px-4 py-4">
                       <span
@@ -1295,7 +1389,10 @@ function ScreeningForm({
 
   const availableIncomingLoads = useMemo(
     () =>
-      data.incomingLoads.filter((load) => load.status === "AVAILABLE"),
+      data.incomingLoads.filter(
+        (load) =>
+          load.status === "AVAILABLE" && hasCompleteIncomingErpLots(load),
+      ),
     [data.incomingLoads],
   );
 
@@ -1304,6 +1401,11 @@ function ScreeningForm({
       data.incomingLoads.find((load) => load.id === incomingLoadId) ?? null,
     [data.incomingLoads, incomingLoadId],
   );
+
+  useEffect(() => {
+    if (!selectedIncomingLoad || editingId) return;
+    setProducts(productsFromIncomingLoad(selectedIncomingLoad));
+  }, [editingId, selectedIncomingLoad]);
 
   const numericRawWeight = Number(selectedIncomingLoad?.receivedWeightKg ?? 0);
   const totalOutput = products.reduce(
@@ -1387,7 +1489,7 @@ function ScreeningForm({
         </h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-[#a89c92]">
           Choose a load already entered by Management. The farmer lot, received
-          weight and delivery details are filled automatically.
+          weight, delivery details and five ERP product lots are filled automatically.
         </p>
       </section>
 
@@ -1448,13 +1550,24 @@ function ScreeningForm({
 
         {availableIncomingLoads.length === 0 && (
           <div className="border-t border-amber-300 bg-amber-50 px-5 py-4 text-sm font-bold text-amber-900">
-            No incoming farmer load is currently available. Management must record
-            the truck first.
+            No complete incoming farmer load is currently available. Management must
+            record the truck and all five ERP product lots first.
+          </div>
+        )}
+
+        {data.incomingLoads.some(
+          (load) =>
+            load.status === "AVAILABLE" && !hasCompleteIncomingErpLots(load),
+        ) && (
+          <div className="border-t border-red-300 bg-red-50 px-5 py-4 text-sm font-bold text-red-800">
+            Some older available loads are missing ERP product lots. Office must edit
+            those loads before Screening can select them.
           </div>
         )}
 
         {selectedIncomingLoad && (
-          <div className="grid gap-3 border-t border-[#d8cec3] bg-[#201a16] p-5 text-white sm:grid-cols-2 xl:grid-cols-5">
+          <div className="border-t border-[#d8cec3] bg-[#201a16] p-5 text-white">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             {[
               ["Farmer lot", selectedIncomingLoad.lotNumber],
               ["Farmer / Farm", `${selectedIncomingLoad.farmerName}${selectedIncomingLoad.farmName ? ` · ${selectedIncomingLoad.farmName}` : ""}`],
@@ -1469,6 +1582,23 @@ function ScreeningForm({
                 <p className="mt-2 text-sm font-black text-[#e0d7cf]">{value}</p>
               </div>
             ))}
+            </div>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              {productOrder.map((productType) => (
+                <div
+                  key={productType}
+                  className="border border-[#5a4637] bg-[#241b15] p-3"
+                >
+                  <p className="text-[10px] font-black uppercase tracking-[0.1em] text-[#d78a46]">
+                    {productShortLabels[productType]} ERP lot
+                  </p>
+                  <p className="mt-2 font-mono text-sm font-black text-white">
+                    {selectedIncomingLoad.erpLots[productType]}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -1558,7 +1688,7 @@ function ScreeningForm({
             03 · Five product outputs
           </p>
           <p className="mt-1 text-sm font-semibold text-slate-600">
-            Enter one ERP lot per product, not one lot per big bag.
+            ERP lots are assigned by Office. Enter only big bags and total weights.
           </p>
         </div>
 
@@ -1590,17 +1720,10 @@ function ScreeningForm({
                 </div>
 
                 <div className="grid gap-3 p-4 sm:grid-cols-3">
-                  <Field label="ERP lot number">
-                    <input
-                      value={product.erpLotNumber}
-                      onChange={(event) =>
-                        updateProduct(product.productType, {
-                          erpLotNumber: event.target.value.toUpperCase(),
-                        })
-                      }
-                      placeholder="ERP lot"
-                      className={inputClass}
-                    />
+                  <Field label="ERP lot number · Office">
+                    <div className="flex h-12 items-center border border-[#cfc4b7] bg-[#eee8e1] px-4 font-mono text-sm font-black text-[#4b3a2e]">
+                      {product.erpLotNumber || "Select an incoming load"}
+                    </div>
                   </Field>
 
                   <Field label="Big bags">
