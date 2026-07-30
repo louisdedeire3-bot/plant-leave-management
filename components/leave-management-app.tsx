@@ -526,6 +526,7 @@ const uiCopyEn = {
   absenceDate: "Absence date",
   markAbsent: "Mark Absent",
   noAbsences: "No absences recorded in this period.",
+  noAbsencesAwaitingReason: "No absences awaiting a reason.",
   classification: "Classification",
   managerAction: "Manager action",
   unjustified: "Unjustified",
@@ -688,6 +689,7 @@ const uiCopy = {
     absenceDate: "Afwesigheidsdatum",
     markAbsent: "Merk afwesig",
     noAbsences: "Geen afwesighede in hierdie tydperk aangeteken nie.",
+    noAbsencesAwaitingReason: "Geen afwesighede wag vir ’n rede nie.",
     classification: "Klassifikasie",
     managerAction: "Bestuursaksie",
     unjustified: "Ongeregverdig",
@@ -3489,6 +3491,9 @@ function AttendanceBoard({
   const u = uiCopy[language];
   const today = isoDate(new Date());
   const todayAbsences = absences.filter((item) => item.absence_date === today);
+  const unresolvedAbsences = absences.filter(
+    (item) => item.classification === "UNJUSTIFIED",
+  );
   const todayLeave = requests.filter((request) => request.status === "approved" && today >= request.startDate && today <= request.endDate);
 
   const selectedEmployee = employees.find((employee) => employee.id === selectedEmployeeId) ?? null;
@@ -3627,8 +3632,17 @@ function AttendanceBoard({
         <table className="w-full min-w-[900px] border-collapse">
           <thead><tr className="bg-slate-200 text-left font-mono text-xs font-black uppercase tracking-[0.12em] text-slate-600"><th className="px-5 py-3">{u.employee}</th><th className="px-5 py-3">{localizedCopy[language].department}</th><th className="px-5 py-3">Date</th><th className="px-5 py-3">{u.classification}</th>{isManager && <th className="px-5 py-3">{u.managerAction}</th>}</tr></thead>
           <tbody>
-            {absences.length === 0 ? <tr><td colSpan={isManager ? 5 : 4} className="px-5 py-8 text-center font-bold text-slate-400">{u.noAbsences}</td></tr> :
-              absences.slice(0, 30).map((absence) => (
+            {unresolvedAbsences.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={isManager ? 5 : 4}
+                  className="px-5 py-8 text-center font-bold text-slate-400"
+                >
+                  {u.noAbsencesAwaitingReason}
+                </td>
+              </tr>
+            ) : (
+              unresolvedAbsences.slice(0, 30).map((absence) => (
                 <tr key={absence.id} className="border-t border-slate-200">
                   <td className="px-5 py-4"><p className="font-black text-slate-950">{absence.employee_name}</p><p className="font-mono text-xs text-slate-500">{absence.employee_code}</p></td>
                   <td className="px-5 py-4 font-semibold text-slate-600">{absence.department}</td>
@@ -3637,7 +3651,7 @@ function AttendanceBoard({
                   {isManager && <td className="px-5 py-4"><select disabled={busyId === absence.id} value={absence.classification} onChange={(e) => onReclassify(absence.id, e.target.value as AbsenceClassification)} className="border border-slate-300 bg-white px-3 py-2 text-sm font-black"><option value="UNJUSTIFIED">{u.unjustified}</option><option value="SICK">{u.sickLeave}</option><option value="ANNUAL">{u.annualLeave}</option><option value="COMPASSIONATE">{u.compassionateLeave}</option><option value="UNPAID">{u.unpaidLeave}</option></select></td>}
                 </tr>
               ))
-            }
+            )}
           </tbody>
         </table>
       </div>
