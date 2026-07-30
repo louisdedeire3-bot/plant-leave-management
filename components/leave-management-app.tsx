@@ -28,7 +28,7 @@ import {
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { Fragment, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   calculateOvertimeHours,
@@ -1009,6 +1009,7 @@ export function LeaveManagementApp() {
   const [requests, setRequests] = useState<LeaveWithManpower[]>([]);
   const [factoryMode, setFactoryMode] = useState<FactoryModeRow | null>(null);
   const [absences, setAbsences] = useState<AbsenceRow[]>([]);
+  const absenceClassificationOverridesRef = useRef<Record<string, AbsenceClassification>>({});
   const [absenceEmployeeId, setAbsenceEmployeeId] = useState("");
   const [absenceDate, setAbsenceDate] = useState(isoDate(new Date()));
   const [absenceBusy, setAbsenceBusy] = useState<string | null>(null);
@@ -1061,6 +1062,8 @@ export function LeaveManagementApp() {
     setRequests([]);
     setOvertimeRequests([]);
     setPublicHolidays([]);
+    setAbsences([]);
+    absenceClassificationOverridesRef.current = {};
     setReportData(null);
     setManagedEmployees([]);
     setEmployeeEditor(null);
@@ -1108,7 +1111,18 @@ export function LeaveManagementApp() {
             : ((holidayResult.data ?? []) as PublicHolidayRow[]),
         );
         if (!factoryResult.error) setFactoryMode((((factoryResult.data ?? []) as FactoryModeRow[])[0]) ?? null);
-        if (!absenceResult.error) setAbsences((absenceResult.data ?? []) as AbsenceRow[]);
+        if (!absenceResult.error) {
+          const serverAbsences = (absenceResult.data ?? []) as AbsenceRow[];
+          setAbsences(
+            serverAbsences.map((absence) => {
+              const override =
+                absenceClassificationOverridesRef.current[absence.id];
+              return override
+                ? { ...absence, classification: override }
+                : absence;
+            }),
+          );
+        }
         if (!adminEmployeeResult.error) setManagedEmployees((adminEmployeeResult.data ?? []) as AdminEmployeeRow[]);
         if (!adminOptionsResult.error && adminOptionsResult.data) setEmployeeAdminOptions(adminOptionsResult.data as EmployeeAdminOptions);
       } catch (error) {
@@ -1573,6 +1587,7 @@ export function LeaveManagementApp() {
         throw new Error("The absence was not found after saving. Please run SQL 29 in Supabase.");
       }
 
+      delete absenceClassificationOverridesRef.current[savedRow.id];
       setAbsences((current) => [
         savedRow,
         ...current.filter((absence) => absence.id !== savedRow.id),
@@ -1598,12 +1613,19 @@ export function LeaveManagementApp() {
     setAbsenceBusy(absenceId);
     setMessage(null);
 
-    // Update the row immediately so the controlled dropdown does not snap back
-    // to UNJUSTIFIED while Supabase is processing the request.
+    absenceClassificationOverridesRef.current[absenceId] = classification;
+
+    // Keep the absence in the shared array for the calendar, but change its
+    // classification immediately. The Attendance list only shows UNJUSTIFIED
+    // rows, so the resolved row disappears without deleting its history.
     setAbsences((current) =>
       current.map((absence) =>
         absence.id === absenceId
-          ? { ...absence, classification }
+          ? {
+              ...absence,
+              classification,
+              updated_at: new Date().toISOString(),
+            }
           : absence,
       ),
     );
@@ -1618,7 +1640,10 @@ export function LeaveManagementApp() {
 
       if (error) throw error;
 
-      const savedClassification = String(data ?? classification).toUpperCase();
+      const savedClassification = String(data ?? classification)
+        .trim()
+        .toUpperCase();
+
       if (savedClassification !== classification) {
         throw new Error(
           `Supabase returned ${savedClassification} instead of ${classification}.`,
@@ -1627,11 +1652,14 @@ export function LeaveManagementApp() {
 
       setMessage({
         kind: "success",
-        text: `Absence changed to ${classification.replaceAll("_", " ")}.`,
+        text: `Absence changed to ${classification.replaceAll("_", " ")} and moved to the planning.`,
       });
 
-      await loadData(sessionToken);
+      // No immediate full reload here: a stale API response could otherwise
+      // make the resolved row reappear as UNJUSTIFIED.
     } catch (error) {
+      delete absenceClassificationOverridesRef.current[absenceId];
+
       setAbsences((current) =>
         current.map((absence) =>
           absence.id === absenceId
@@ -1639,6 +1667,7 @@ export function LeaveManagementApp() {
             : absence,
         ),
       );
+
       setMessage({ kind: "error", text: errorText(error) });
     } finally {
       setAbsenceBusy(null);
@@ -3491,9 +3520,17 @@ function AttendanceBoard({
   const u = uiCopy[language];
   const today = isoDate(new Date());
   const todayAbsences = absences.filter((item) => item.absence_date === today);
-  const unresolvedAbsences = absences.filter(
-    (item) => item.classification === "UNJUSTIFIED",
-  );
+  const unresolvedAbsences = absences.filter((item) => {
+    const classification = String(item.classification ?? "")
+      .trim()
+      .toUpperCase();
+
+    const hasRecordedReason =
+      classification !== "UNJUSTIFIED"
+      || Boolean(item.manager_comment?.trim());
+
+    return !hasRecordedReason;
+  });
   const todayLeave = requests.filter((request) => request.status === "approved" && today >= request.startDate && today <= request.endDate);
 
   const selectedEmployee = employees.find((employee) => employee.id === selectedEmployeeId) ?? null;
@@ -3552,6 +3589,9 @@ function AttendanceBoard({
           <div>
             <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">{u.attendanceControl}</p>
             <h2 className="mt-1 text-2xl font-black uppercase">{title}</h2>
+            <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
+              Open absences only · resolved cases stay in the planning
+            </p>
           </div>
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="border border-slate-700 bg-slate-900 px-4 py-2"><p className="text-xl font-black">{employees.length}</p><p className="text-[10px] font-black uppercase text-slate-400">{u.team}</p></div>
