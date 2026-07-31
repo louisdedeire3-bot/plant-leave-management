@@ -81,12 +81,34 @@ interface ScreeningEmployeeOption {
 }
 
 type IncomingErpLots = Record<ScreeningProductType, string>;
+type ScreeningPriceMap = Record<ScreeningProductType, number>;
+
+interface FarmOption {
+  id: string;
+  farmName: string;
+}
+
+interface FarmerOption {
+  id: string;
+  farmerName: string;
+  farms: FarmOption[];
+}
+
+interface ScreeningReportSettings {
+  fscCode: string;
+  currency: string;
+  prices: ScreeningPriceMap;
+}
 
 interface IncomingLoadRow {
   id: string;
   lotNumber: string;
+  farmerId: string | null;
+  farmId: string | null;
   farmerName: string;
   farmName: string;
+  fscCode: string;
+  prices: ScreeningPriceMap;
   receivedDate: string;
   receivedWeightKg: number;
   truckRegistration: string;
@@ -153,6 +175,8 @@ interface ScreeningStockRow {
 
 interface ScreeningBootstrap {
   incomingLoads: IncomingLoadRow[];
+  farmers: FarmerOption[];
+  settings: ScreeningReportSettings;
   employees: ScreeningEmployeeOption[];
   loads: ScreeningLoadRow[];
   stock: ScreeningStockRow[];
@@ -173,8 +197,8 @@ interface ScreeningSavePayload {
 interface IncomingLoadSavePayload {
   loadId: string | null;
   lotNumber: string;
-  farmerName: string;
-  farmName: string;
+  farmerId: string;
+  farmId: string;
   receivedDate: string;
   receivedWeightKg: number;
   truckRegistration: string;
@@ -270,6 +294,31 @@ function blankIncomingErpLots(): IncomingErpLots {
   };
 }
 
+function defaultScreeningSettings(): ScreeningReportSettings {
+  return {
+    fscCode: "SGSCH-FM/COC-011482",
+    currency: "NAD",
+    prices: {
+      STANDARD: 3200,
+      RESTAURANT: 4000,
+      FINES: 1300,
+      SAND_ASH: 0,
+      UNBURNT: 0,
+    },
+  };
+}
+
+function emptyScreeningBootstrap(): ScreeningBootstrap {
+  return {
+    incomingLoads: [],
+    farmers: [],
+    settings: defaultScreeningSettings(),
+    employees: [],
+    loads: [],
+    stock: [],
+  };
+}
+
 function hasCompleteIncomingErpLots(load: IncomingLoadRow): boolean {
   return productOrder.every(
     (productType) => Boolean(load.erpLots?.[productType]?.trim()),
@@ -330,12 +379,9 @@ export function ScreeningFactoryModule({
 }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [section, setSection] = useState<ScreeningModuleSection>("control");
-  const [data, setData] = useState<ScreeningBootstrap>({
-    incomingLoads: [],
-    employees: [],
-    loads: [],
-    stock: [],
-  });
+  const [data, setData] = useState<ScreeningBootstrap>(
+    emptyScreeningBootstrap(),
+  );
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{
     kind: "success" | "error";
@@ -358,14 +404,17 @@ export function ScreeningFactoryModule({
 
       if (error) throw error;
 
-      setData(
-        (response ?? {
-          incomingLoads: [],
-          employees: [],
-          loads: [],
-          stock: [],
-        }) as ScreeningBootstrap,
-      );
+      const nextData = (response ?? {}) as Partial<ScreeningBootstrap>;
+      setData({
+        ...emptyScreeningBootstrap(),
+        ...nextData,
+        incomingLoads: nextData.incomingLoads ?? [],
+        farmers: nextData.farmers ?? [],
+        settings: nextData.settings ?? defaultScreeningSettings(),
+        employees: nextData.employees ?? [],
+        loads: nextData.loads ?? [],
+        stock: nextData.stock ?? [],
+      });
     } catch (error) {
       setMessage({ kind: "error", text: errorText(error) });
     } finally {
@@ -391,8 +440,8 @@ export function ScreeningFactoryModule({
           p_token: sessionToken,
           p_load_id: payload.loadId,
           p_lot_number: payload.lotNumber,
-          p_farmer_name: payload.farmerName,
-          p_farm_name: payload.farmName || null,
+          p_farmer_id: payload.farmerId,
+          p_farm_id: payload.farmId,
           p_received_date: payload.receivedDate,
           p_received_weight_kg: payload.receivedWeightKg,
           p_truck_registration: payload.truckRegistration || null,
@@ -961,8 +1010,8 @@ function IncomingLoadsManagement({
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [lotNumber, setLotNumber] = useState("");
-  const [farmerName, setFarmerName] = useState("");
-  const [farmName, setFarmName] = useState("");
+  const [farmerId, setFarmerId] = useState("");
+  const [farmId, setFarmId] = useState("");
   const [receivedDate, setReceivedDate] = useState(isoDate(new Date()));
   const [receivedWeightKg, setReceivedWeightKg] = useState("");
   const [truckRegistration, setTruckRegistration] = useState("");
@@ -973,6 +1022,24 @@ function IncomingLoadsManagement({
     blankIncomingErpLots(),
   );
   const [search, setSearch] = useState("");
+
+  const farmers = data.farmers ?? [];
+  const selectedFarmer = useMemo(
+    () => farmers.find((farmer) => farmer.id === farmerId) ?? null,
+    [farmerId, farmers],
+  );
+  const availableFarms = selectedFarmer?.farms ?? [];
+
+  useEffect(() => {
+    if (!farmerId) {
+      setFarmId("");
+      return;
+    }
+
+    if (!availableFarms.some((farm) => farm.id === farmId)) {
+      setFarmId("");
+    }
+  }, [availableFarms, farmId, farmerId]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -989,8 +1056,8 @@ function IncomingLoadsManagement({
   function resetForm() {
     setEditingId(null);
     setLotNumber("");
-    setFarmerName("");
-    setFarmName("");
+    setFarmerId("");
+    setFarmId("");
     setReceivedDate(isoDate(new Date()));
     setReceivedWeightKg("");
     setTruckRegistration("");
@@ -1004,8 +1071,27 @@ function IncomingLoadsManagement({
     if (load.status !== "AVAILABLE") return;
     setEditingId(load.id);
     setLotNumber(load.lotNumber);
-    setFarmerName(load.farmerName);
-    setFarmName(load.farmName);
+
+    const matchedFarmer =
+      farmers.find((farmer) => farmer.id === load.farmerId)
+      ?? farmers.find(
+        (farmer) =>
+          farmer.farmerName.trim().toLowerCase()
+          === load.farmerName.trim().toLowerCase(),
+      )
+      ?? null;
+
+    const matchedFarm =
+      matchedFarmer?.farms.find((farm) => farm.id === load.farmId)
+      ?? matchedFarmer?.farms.find(
+        (farm) =>
+          farm.farmName.trim().toLowerCase()
+          === load.farmName.trim().toLowerCase(),
+      )
+      ?? null;
+
+    setFarmerId(matchedFarmer?.id ?? "");
+    setFarmId(matchedFarm?.id ?? "");
     setReceivedDate(load.receivedDate);
     setReceivedWeightKg(String(load.receivedWeightKg));
     setTruckRegistration(load.truckRegistration);
@@ -1025,8 +1111,8 @@ function IncomingLoadsManagement({
     const success = await onSave({
       loadId: editingId,
       lotNumber: lotNumber.trim().toUpperCase(),
-      farmerName: farmerName.trim(),
-      farmName: farmName.trim(),
+      farmerId,
+      farmId,
       receivedDate,
       receivedWeightKg: Number(receivedWeightKg || 0),
       truckRegistration: truckRegistration.trim().toUpperCase(),
@@ -1066,10 +1152,32 @@ function IncomingLoadsManagement({
           Incoming farmer loads
         </h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-[#a89c92]">
-          Management records the truck once and assigns all five ERP product lots.
-          Screening later selects the existing farmer lot and receives every lot
-          number automatically.
+          Management selects the registered farmer and farm, records the truck
+          once and assigns all five ERP product lots. Screening then receives the
+          complete load automatically.
         </p>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          <div className="border border-white/15 bg-white/5 px-4 py-3 sm:col-span-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#d78a46]">
+              FSC code
+            </p>
+            <p className="mt-1 font-mono text-sm font-black">
+              {data.settings.fscCode}
+            </p>
+          </div>
+          {productOrder.map((productType) => (
+            <div key={productType} className="border border-white/15 bg-white/5 px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#d78a46]">
+                {productShortLabels[productType]} price
+              </p>
+              <p className="mt-1 text-sm font-black">
+                {data.settings.currency}{" "}
+                {Number(data.settings.prices[productType] ?? 0).toLocaleString("en-NA")}
+                /t
+              </p>
+            </div>
+          ))}
+        </div>
       </section>
 
       <form onSubmit={submit} className="border border-[#cfc4b7] bg-white">
@@ -1079,7 +1187,7 @@ function IncomingLoadsManagement({
               {editingId ? "Edit available load" : "New incoming load"}
             </p>
             <p className="mt-1 text-sm font-semibold text-slate-600">
-              Farmer details, received weight and all five ERP product lots are required.
+              Select a registered farmer and farm. Received weight and all five ERP product lots are required.
             </p>
           </div>
           {editingId && (
@@ -1105,22 +1213,41 @@ function IncomingLoadsManagement({
           </Field>
 
           <Field label="Farmer / supplier">
-            <input
-              value={farmerName}
-              onChange={(event) => setFarmerName(event.target.value)}
-              placeholder="Farmer or supplier name"
+            <select
+              value={farmerId}
+              onChange={(event) => {
+                setFarmerId(event.target.value);
+                setFarmId("");
+              }}
               className={inputClass}
               required
-            />
+            >
+              <option value="">Select farmer</option>
+              {farmers.map((farmer) => (
+                <option key={farmer.id} value={farmer.id}>
+                  {farmer.farmerName}
+                </option>
+              ))}
+            </select>
           </Field>
 
           <Field label="Farm name">
-            <input
-              value={farmName}
-              onChange={(event) => setFarmName(event.target.value)}
-              placeholder="Optional farm name"
+            <select
+              value={farmId}
+              onChange={(event) => setFarmId(event.target.value)}
               className={inputClass}
-            />
+              disabled={!farmerId}
+              required
+            >
+              <option value="">
+                {farmerId ? "Select farm" : "Select farmer first"}
+              </option>
+              {availableFarms.map((farm) => (
+                <option key={farm.id} value={farm.id}>
+                  {farm.farmName}
+                </option>
+              ))}
+            </select>
           </Field>
 
           <Field label="Date received">
