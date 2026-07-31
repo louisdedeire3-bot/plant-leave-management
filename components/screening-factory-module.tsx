@@ -1,8 +1,10 @@
 "use client";
 
-// GCN SCREENING MODULE V44 FINAL
+// GCN SCREENING MODULE V45 OFFICIAL REPORT
 // Includes: Farmer/Farm master, Office-assigned ERP lots,
-// Manager validation, Screening Reports, PDF export and Excel export.
+// Manager validation, official Screening Reports, PDF export and Excel export.
+// Report Code = Delivery Note Number = Farmer Lot Number.
+// C.Fix and Humidity are reserved for the future Laboratory module.
 
 import {
   Boxes,
@@ -220,6 +222,8 @@ interface ScreeningReportRow {
   productType: ScreeningProductType;
   qualityLabel: string;
   erpLotNumber: string;
+  cFix: number | null;
+  humidity: number | null;
   pricePerTon: number;
   tonnage: number;
   percentage: number;
@@ -400,6 +404,11 @@ function buildScreeningReportData(
     (item) => item.id === load.incomingLoadId,
   );
 
+  const reportReference = load.rawLotNumber.trim();
+  if (!reportReference) {
+    throw new Error("The Farmer Lot Number is missing from this validated load.");
+  }
+
   const prices = incoming?.prices ?? data.settings.prices;
   const fscCode = incoming?.fscCode || data.settings.fscCode;
   const totalTonnage =
@@ -421,6 +430,8 @@ function buildScreeningReportData(
       productType,
       qualityLabel: reportQualityLabels[productType],
       erpLotNumber: product?.erpLotNumber ?? "",
+      cFix: null,
+      humidity: null,
       pricePerTon,
       tonnage,
       percentage: totalTonnage > 0 ? tonnage / totalTonnage : 0,
@@ -429,8 +440,8 @@ function buildScreeningReportData(
   });
 
   return {
-    reportCode: load.rawLotNumber,
-    deliveryNoteNumber: load.rawLotNumber,
+    reportCode: reportReference,
+    deliveryNoteNumber: reportReference,
     deliveryDate:
       incoming?.receivedDate || load.receivedDate || load.screeningDate,
     farmerName: incoming?.farmerName || load.farmerName,
@@ -503,8 +514,8 @@ function downloadScreeningReportExcel(report: ScreeningReportData) {
     ...report.rows.map((row) => [
       null,
       row.qualityLabel,
-      null,
-      null,
+      row.cFix,
+      row.humidity,
       row.pricePerTon,
       row.tonnage,
       row.percentage,
@@ -546,9 +557,13 @@ function downloadScreeningReportExcel(report: ScreeningReportData) {
   }));
 
   for (let row = 11; row <= 15; row += 1) {
+    const cFixCell = worksheet[`C${row}`];
+    const humidityCell = worksheet[`D${row}`];
     const tonnageCell = worksheet[`F${row}`];
     const percentageCell = worksheet[`G${row}`];
     const valueCell = worksheet[`H${row}`];
+    if (cFixCell) cFixCell.z = "0.00";
+    if (humidityCell) humidityCell.z = "0.00";
     if (tonnageCell) tonnageCell.z = "0.000";
     if (percentageCell) percentageCell.z = "0%";
     if (valueCell) valueCell.z = '#,##0.00;[Red]-#,##0.00;"-"';
@@ -731,6 +746,29 @@ function downloadScreeningReportPdf(report: ScreeningReportData) {
   report.rows.forEach((row, index) => {
     const y = rowY[index];
     content += pdfText(row.qualityLabel, columns[1] - 7, y, 11, "F3", "right");
+
+    if (row.cFix !== null) {
+      content += pdfText(
+        reportNumber(row.cFix, 2),
+        columns[2] - 12,
+        y,
+        11,
+        "F1",
+        "right",
+      );
+    }
+
+    if (row.humidity !== null) {
+      content += pdfText(
+        reportNumber(row.humidity, 2),
+        columns[3] - 12,
+        y,
+        11,
+        "F1",
+        "right",
+      );
+    }
+
     content += pdfText(
       reportNumber(row.pricePerTon, 0),
       columns[4] - 12,
@@ -2845,7 +2883,8 @@ function ScreeningReports({ data }: { data: ScreeningBootstrap }) {
         </h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-[#a89c92]">
           Reports become available immediately after Manager validation.
-          Download the farmer report as PDF or Excel at any time.
+          Report Code and Delivery Note Number both use the Farmer Lot Number.
+          C.Fix and Humidity remain blank until the Laboratory module is connected.
         </p>
       </section>
 
@@ -2906,10 +2945,13 @@ function ScreeningReports({ data }: { data: ScreeningBootstrap }) {
                       {report.currency} {reportNumber(report.totalValue, 2)}
                     </p>
                     <p className="mt-2 text-xs text-slate-400">
-                      FSC {report.fscCode}
+                      Delivery Note {report.deliveryNoteNumber} · FSC {report.fscCode}
                       {report.validatedAt
                         ? ` · Validated ${formatDateTime(report.validatedAt)}`
                         : ""}
+                    </p>
+                    <p className="mt-1 text-xs font-bold text-amber-700">
+                      C.Fix and Humidity: pending Laboratory module
                     </p>
                   </div>
 
