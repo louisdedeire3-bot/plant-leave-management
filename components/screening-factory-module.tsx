@@ -1,5 +1,9 @@
 "use client";
 
+// GCN SCREENING MODULE V44 FINAL
+// Includes: Farmer/Farm master, Office-assigned ERP lots,
+// Manager validation, Screening Reports, PDF export and Excel export.
+
 import {
   Boxes,
   Check,
@@ -7,8 +11,11 @@ import {
   CircleAlert,
   ClipboardList,
   Clock3,
+  Download,
   FileCheck2,
   Factory,
+  FileSpreadsheet,
+  FileText,
   History,
   LoaderCircle,
   PackageCheck,
@@ -23,6 +30,7 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 
 type PortalRole = "employee" | "supervisor" | "manager";
@@ -80,17 +88,42 @@ interface ScreeningEmployeeOption {
   position: string;
 }
 
+type IncomingErpLots = Record<ScreeningProductType, string>;
+type ScreeningPriceMap = Record<ScreeningProductType, number>;
+
+interface FarmOption {
+  id: string;
+  farmName: string;
+}
+
+interface FarmerOption {
+  id: string;
+  farmerName: string;
+  farms: FarmOption[];
+}
+
+interface ScreeningReportSettings {
+  fscCode: string;
+  currency: string;
+  prices: ScreeningPriceMap;
+}
+
 interface IncomingLoadRow {
   id: string;
   lotNumber: string;
+  farmerId: string | null;
+  farmId: string | null;
   farmerName: string;
   farmName: string;
+  fscCode: string;
+  prices: ScreeningPriceMap;
   receivedDate: string;
   receivedWeightKg: number;
   truckRegistration: string;
   transporterName: string;
   driverName: string;
   notes: string;
+  erpLots: IncomingErpLots;
   status: IncomingLoadStatus;
   cancellationComment: string;
   createdAt: string;
@@ -150,6 +183,8 @@ interface ScreeningStockRow {
 
 interface ScreeningBootstrap {
   incomingLoads: IncomingLoadRow[];
+  farmers: FarmerOption[];
+  settings: ScreeningReportSettings;
   employees: ScreeningEmployeeOption[];
   loads: ScreeningLoadRow[];
   stock: ScreeningStockRow[];
@@ -170,14 +205,39 @@ interface ScreeningSavePayload {
 interface IncomingLoadSavePayload {
   loadId: string | null;
   lotNumber: string;
-  farmerName: string;
-  farmName: string;
+  farmerId: string;
+  farmId: string;
   receivedDate: string;
   receivedWeightKg: number;
   truckRegistration: string;
   transporterName: string;
   driverName: string;
   notes: string;
+  erpLots: IncomingErpLots;
+}
+
+interface ScreeningReportRow {
+  productType: ScreeningProductType;
+  qualityLabel: string;
+  erpLotNumber: string;
+  pricePerTon: number;
+  tonnage: number;
+  percentage: number;
+  value: number;
+}
+
+interface ScreeningReportData {
+  reportCode: string;
+  deliveryNoteNumber: string;
+  deliveryDate: string;
+  farmerName: string;
+  farmName: string;
+  fscCode: string;
+  currency: string;
+  rows: ScreeningReportRow[];
+  totalTonnage: number;
+  totalValue: number;
+  validatedAt: string | null;
 }
 
 const productOrder: ScreeningProductType[] = [
@@ -256,13 +316,527 @@ function mapProfile(row: LoginRow | ProfileRow): PortalProfile {
   };
 }
 
-function blankProducts(): ScreeningProductRow[] {
+function blankIncomingErpLots(): IncomingErpLots {
+  return {
+    STANDARD: "",
+    RESTAURANT: "",
+    FINES: "",
+    SAND_ASH: "",
+    UNBURNT: "",
+  };
+}
+
+function defaultScreeningSettings(): ScreeningReportSettings {
+  return {
+    fscCode: "SGSCH-FM/COC-011482",
+    currency: "NAD",
+    prices: {
+      STANDARD: 3200,
+      RESTAURANT: 4000,
+      FINES: 1300,
+      SAND_ASH: 0,
+      UNBURNT: 0,
+    },
+  };
+}
+
+function emptyScreeningBootstrap(): ScreeningBootstrap {
+  return {
+    incomingLoads: [],
+    farmers: [],
+    settings: defaultScreeningSettings(),
+    employees: [],
+    loads: [],
+    stock: [],
+  };
+}
+
+function hasCompleteIncomingErpLots(load: IncomingLoadRow): boolean {
+  return productOrder.every(
+    (productType) => Boolean(load.erpLots?.[productType]?.trim()),
+  );
+}
+
+function productsFromIncomingLoad(
+  load: IncomingLoadRow | null,
+): ScreeningProductRow[] {
   return productOrder.map((productType) => ({
     productType,
-    erpLotNumber: "",
+    erpLotNumber: load?.erpLots?.[productType] ?? "",
     bigBagCount: 0,
     totalWeightKg: 0,
   }));
+}
+
+function blankProducts(): ScreeningProductRow[] {
+  return productsFromIncomingLoad(null);
+}
+
+const reportProductOrder: ScreeningProductType[] = [
+  "UNBURNT",
+  "SAND_ASH",
+  "FINES",
+  "STANDARD",
+  "RESTAURANT",
+];
+
+const reportQualityLabels: Record<ScreeningProductType, string> = {
+  UNBURNT: "Unburn",
+  SAND_ASH: "Sand (0-5mm)",
+  FINES: "Fines (5-20mm)",
+  STANDARD: "Charcoal (20-50mm)",
+  RESTAURANT: "Restaurant (50mm+)",
+};
+
+function buildScreeningReportData(
+  load: ScreeningLoadRow,
+  data: ScreeningBootstrap,
+): ScreeningReportData {
+  if (load.status !== "VALIDATED") {
+    throw new Error("The Screening Report is available only after Manager validation.");
+  }
+
+  const incoming = data.incomingLoads.find(
+    (item) => item.id === load.incomingLoadId,
+  );
+
+  const prices = incoming?.prices ?? data.settings.prices;
+  const fscCode = incoming?.fscCode || data.settings.fscCode;
+  const totalTonnage =
+    reportProductOrder.reduce((sum, productType) => {
+      const product = load.products.find(
+        (item) => item.productType === productType,
+      );
+      return sum + Number(product?.totalWeightKg ?? 0) / 1000;
+    }, 0);
+
+  const rows = reportProductOrder.map((productType) => {
+    const product = load.products.find(
+      (item) => item.productType === productType,
+    );
+    const tonnage = Number(product?.totalWeightKg ?? 0) / 1000;
+    const pricePerTon = Number(prices?.[productType] ?? 0);
+
+    return {
+      productType,
+      qualityLabel: reportQualityLabels[productType],
+      erpLotNumber: product?.erpLotNumber ?? "",
+      pricePerTon,
+      tonnage,
+      percentage: totalTonnage > 0 ? tonnage / totalTonnage : 0,
+      value: tonnage * pricePerTon,
+    };
+  });
+
+  return {
+    reportCode: load.rawLotNumber,
+    deliveryNoteNumber: load.rawLotNumber,
+    deliveryDate:
+      incoming?.receivedDate || load.receivedDate || load.screeningDate,
+    farmerName: incoming?.farmerName || load.farmerName,
+    farmName: incoming?.farmName || load.farmName || "Farm not specified",
+    fscCode,
+    currency: data.settings.currency,
+    rows,
+    totalTonnage,
+    totalValue: rows.reduce((sum, row) => sum + row.value, 0),
+    validatedAt: load.validatedAt,
+  };
+}
+
+function safeReportFilename(value: string): string {
+  return (
+    value
+      .trim()
+      .replace(/[^A-Za-z0-9._-]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "screening-report"
+  );
+}
+
+function reportDate(value: string): string {
+  if (!value) return "";
+  const [year, month, day] = value.slice(0, 10).split("-");
+  return year && month && day ? `${day}/${month}/${year}` : value;
+}
+
+function reportNumber(value: number, decimals = 2): string {
+  return Number(value || 0).toLocaleString("en-NA", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
+function reportTonnage(value: number): string {
+  return Number(value || 0).toLocaleString("en-NA", {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  });
+}
+
+function reportPercentage(value: number): string {
+  return `${Math.round(Number(value || 0) * 100)}%`;
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function downloadScreeningReportExcel(report: ScreeningReportData) {
+  const rows: Array<Array<string | number | null>> = [
+    [null, "Delivery Date:", reportDate(report.deliveryDate), null, "GREEN NAMIBIA CHARCOAL", null, null, null],
+    [null, "Farm:", report.farmName, null, null, null, null, null],
+    [null, "FSC Code:", report.fscCode, null, null, null, null, null],
+    [null, "Report Code:", report.reportCode, null, null, null, null, null],
+    [null, "Delivery Note Number:", report.deliveryNoteNumber, null, null, null, null, null],
+    [],
+    [],
+    [],
+    [],
+    [null, "Quality", "C.Fix", "Humidity", "Price per Ton", "Tonnage", "Percentage", `Value (${report.currency})`],
+    ...report.rows.map((row) => [
+      null,
+      row.qualityLabel,
+      null,
+      null,
+      row.pricePerTon,
+      row.tonnage,
+      row.percentage,
+      row.value,
+    ]),
+    [null, "Total", null, null, null, report.totalTonnage, 1, report.totalValue],
+    [null, null, null, null, null, null, "VAT Exc", report.totalValue],
+    [],
+    [],
+    [
+      null,
+      `Please invoice to the following address: Green Charcoal Namibia PTY, Portion 13 Townland 170, PO Box 04 and send the invoice to: purchase.invoice@greencharcoalnamibia.com with ${report.reportCode} as reference\n\nFor any grievances or complaints in regards to our operations, please contact info@greencharcoalnamibia.com or +264 81 34 74 116`,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+    ],
+  ];
+
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+  worksheet["!merges"] = [
+    { s: { r: 0, c: 4 }, e: { r: 4, c: 7 } },
+    { s: { r: 19, c: 1 }, e: { r: 19, c: 7 } },
+  ];
+  worksheet["!cols"] = [
+    { wch: 3 },
+    { wch: 28 },
+    { wch: 23 },
+    { wch: 15 },
+    { wch: 18 },
+    { wch: 16 },
+    { wch: 15 },
+    { wch: 18 },
+  ];
+  worksheet["!rows"] = Array.from({ length: 20 }, (_, index) => ({
+    hpt: index === 19 ? 64 : index === 0 ? 26 : 20,
+  }));
+
+  for (let row = 11; row <= 15; row += 1) {
+    const tonnageCell = worksheet[`F${row}`];
+    const percentageCell = worksheet[`G${row}`];
+    const valueCell = worksheet[`H${row}`];
+    if (tonnageCell) tonnageCell.z = "0.000";
+    if (percentageCell) percentageCell.z = "0%";
+    if (valueCell) valueCell.z = '#,##0.00;[Red]-#,##0.00;"-"';
+  }
+
+  for (const row of [16]) {
+    if (worksheet[`F${row}`]) worksheet[`F${row}`].z = "0.000";
+    if (worksheet[`G${row}`]) worksheet[`G${row}`].z = "0%";
+    if (worksheet[`H${row}`]) worksheet[`H${row}`].z = "#,##0.00";
+  }
+  if (worksheet.H17) worksheet.H17.z = "#,##0.00";
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Screening Report");
+  XLSX.writeFile(
+    workbook,
+    `${safeReportFilename(report.reportCode)}.xlsx`,
+    { compression: true },
+  );
+}
+
+function pdfAscii(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7E]/g, " ");
+}
+
+function pdfEscape(value: string): string {
+  return pdfAscii(value)
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
+}
+
+function pdfTextWidth(value: string, size: number): number {
+  return pdfAscii(value).length * size * 0.52;
+}
+
+function pdfText(
+  value: string,
+  x: number,
+  y: number,
+  size: number,
+  font: "F1" | "F2" | "F3" = "F1",
+  align: "left" | "center" | "right" = "left",
+): string {
+  const width = pdfTextWidth(value, size);
+  const drawX =
+    align === "center" ? x - width / 2 : align === "right" ? x - width : x;
+  return `BT /${font} ${size.toFixed(2)} Tf 1 0 0 1 ${drawX.toFixed(2)} ${y.toFixed(2)} Tm (${pdfEscape(value)}) Tj ET\n`;
+}
+
+function pdfLine(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  width = 0.7,
+): string {
+  return `${width.toFixed(2)} w ${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S\n`;
+}
+
+function pdfFillRect(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  rgb: [number, number, number],
+): string {
+  return `q ${rgb[0]} ${rgb[1]} ${rgb[2]} rg ${x.toFixed(2)} ${y.toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re f Q\n`;
+}
+
+function pdfCirclePath(cx: number, cy: number, radius: number): string {
+  const k = radius * 0.5522847498;
+  return [
+    `${(cx + radius).toFixed(2)} ${cy.toFixed(2)} m`,
+    `${(cx + radius).toFixed(2)} ${(cy + k).toFixed(2)} ${(cx + k).toFixed(2)} ${(cy + radius).toFixed(2)} ${cx.toFixed(2)} ${(cy + radius).toFixed(2)} c`,
+    `${(cx - k).toFixed(2)} ${(cy + radius).toFixed(2)} ${(cx - radius).toFixed(2)} ${(cy + k).toFixed(2)} ${(cx - radius).toFixed(2)} ${cy.toFixed(2)} c`,
+    `${(cx - radius).toFixed(2)} ${(cy - k).toFixed(2)} ${(cx - k).toFixed(2)} ${(cy - radius).toFixed(2)} ${cx.toFixed(2)} ${(cy - radius).toFixed(2)} c`,
+    `${(cx + k).toFixed(2)} ${(cy - radius).toFixed(2)} ${(cx + radius).toFixed(2)} ${(cy - k).toFixed(2)} ${(cx + radius).toFixed(2)} ${cy.toFixed(2)} c`,
+  ].join(" ");
+}
+
+function createSimplePdf(content: string): Uint8Array {
+  const encoder = new TextEncoder();
+  const streamLength = encoder.encode(content).length;
+
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 4 0 R /F2 5 0 R /F3 6 0 R >> >> /Contents 7 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique >>",
+    `<< /Length ${streamLength} >>\nstream\n${content}endstream`,
+  ];
+
+  let pdf = "%PDF-1.4\n%\xE2\xE3\xCF\xD3\n";
+  const offsets = [0];
+
+  objects.forEach((object, index) => {
+    offsets.push(encoder.encode(pdf).length);
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+
+  const xrefOffset = encoder.encode(pdf).length;
+  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += "0000000000 65535 f \n";
+  offsets.slice(1).forEach((offset) => {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  });
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+
+  return encoder.encode(pdf);
+}
+
+function downloadScreeningReportPdf(report: ScreeningReportData) {
+  let content = "";
+  content += "0 G 0 g\n";
+
+  const labelX = 62;
+  const valueX = 182;
+  const metaRows: Array<[string, string]> = [
+    ["Delivery Date:", reportDate(report.deliveryDate)],
+    ["Farm:", report.farmName],
+    ["FSC Code:", report.fscCode],
+    ["Report Code:", report.reportCode],
+    ["Delivery Note Number:", report.deliveryNoteNumber],
+  ];
+
+  metaRows.forEach(([label, value], index) => {
+    const y = 520 - index * 23;
+    content += pdfText(label, labelX, y, 12, "F1");
+    content += pdfText(value, valueX + 92, y, 12, "F1", "center");
+    content += pdfLine(valueX, y - 5, valueX + 184, y - 5, 0.35);
+  });
+  content += pdfLine(valueX, 406, valueX, 535, 0.35);
+  content += pdfLine(valueX + 184, 406, valueX + 184, 535, 0.35);
+
+  content += "0 0.58 0.22 RG\n";
+  [31, 24, 17, 10].forEach((radius) => {
+    content += `2.2 w ${pdfCirclePath(438, 478, radius)} S\n`;
+  });
+  content += "0 0.58 0.22 rg\n";
+  content += pdfText("GREEN", 485, 493, 24, "F1");
+  content += pdfText("NAMIBIA", 575, 493, 11, "F1");
+  content += pdfText("CHARCOAL", 485, 462, 24, "F1");
+  content += "0 G 0 g\n";
+
+  const columns = [55, 188, 310, 404, 500, 600, 690, 790];
+  const centers = [
+    (columns[0] + columns[1]) / 2,
+    (columns[1] + columns[2]) / 2,
+    (columns[2] + columns[3]) / 2,
+    (columns[3] + columns[4]) / 2,
+    (columns[4] + columns[5]) / 2,
+    (columns[5] + columns[6]) / 2,
+    (columns[6] + columns[7]) / 2,
+  ];
+  const headers = [
+    "Quality",
+    "C.Fix",
+    "Humidity",
+    "Price per Ton",
+    "Tonnage",
+    "Percentage",
+    `Value (${report.currency})`,
+  ];
+
+  headers.forEach((header, index) => {
+    content += pdfText(header, centers[index], 346, 11, "F2", "center");
+  });
+  content += pdfLine(columns[0], 339, columns[7], 339, 0.75);
+  columns.slice(1).forEach((x) => {
+    content += pdfLine(x, 202, x, 360, 0.45);
+  });
+
+  const rowY = [316, 290, 264, 238, 212];
+  report.rows.forEach((row, index) => {
+    const y = rowY[index];
+    content += pdfText(row.qualityLabel, columns[1] - 7, y, 11, "F3", "right");
+    content += pdfText(
+      reportNumber(row.pricePerTon, 0),
+      columns[4] - 12,
+      y,
+      11,
+      "F1",
+      "right",
+    );
+    content += pdfText(
+      reportTonnage(row.tonnage),
+      columns[5] - 12,
+      y,
+      11,
+      "F1",
+      "right",
+    );
+    content += pdfText(
+      reportPercentage(row.percentage),
+      columns[6] - 14,
+      y,
+      11,
+      "F1",
+      "right",
+    );
+    content += pdfText(
+      row.value === 0 ? "-" : reportNumber(row.value, 2),
+      columns[7] - 8,
+      y,
+      11,
+      "F1",
+      "right",
+    );
+  });
+
+  content += pdfFillRect(
+    columns[1],
+    201,
+    columns[3] - columns[1],
+    25,
+    [0.26, 0.33, 0.42],
+  );
+  content += pdfLine(columns[0], 201, columns[4], 201, 0.75);
+  content += pdfText("Total", columns[1] - 7, 183, 11, "F2", "right");
+  content += pdfText(
+    reportTonnage(report.totalTonnage),
+    columns[5] - 12,
+    183,
+    11,
+    "F1",
+    "right",
+  );
+  content += pdfText("100%", columns[6] - 14, 183, 11, "F1", "right");
+  content += pdfText(
+    reportNumber(report.totalValue, 2),
+    columns[7] - 8,
+    183,
+    11,
+    "F1",
+    "right",
+  );
+  content += pdfLine(columns[5], 174, columns[7], 174, 0.55);
+  content += pdfText("VAT Exc", columns[6] - 14, 158, 11, "F2", "right");
+  content += pdfText(
+    reportNumber(report.totalValue, 2),
+    columns[7] - 8,
+    158,
+    11,
+    "F2",
+    "right",
+  );
+
+  content += pdfText(
+    "Please invoice to the following address: Green Charcoal Namibia PTY, Portion 13 Townland 170, PO Box 04 and send the invoice to:",
+    421,
+    105,
+    9.5,
+    "F1",
+    "center",
+  );
+  content += pdfText(
+    `purchase.invoice@greencharcoalnamibia.com with ${report.reportCode} as reference`,
+    421,
+    88,
+    9.5,
+    "F1",
+    "center",
+  );
+  content += pdfText(
+    "For any grievances or complaints in regards to our operations, please contact info@greencharcoalnamibia.com or +264 81 34 74 116",
+    421,
+    54,
+    9,
+    "F1",
+    "center",
+  );
+
+  const bytes = createSimplePdf(content);
+  const pdfBuffer = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
+
+  downloadBlob(
+    new Blob([pdfBuffer], { type: "application/pdf" }),
+    `${safeReportFilename(report.reportCode)}.pdf`,
+  );
 }
 
 function statusStyle(status: ScreeningStatus): string {
@@ -293,6 +867,7 @@ type ScreeningModuleSection =
   | "incoming"
   | "new"
   | "history"
+  | "reports"
   | "stock";
 
 export function ScreeningFactoryModule({
@@ -304,12 +879,9 @@ export function ScreeningFactoryModule({
 }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [section, setSection] = useState<ScreeningModuleSection>("control");
-  const [data, setData] = useState<ScreeningBootstrap>({
-    incomingLoads: [],
-    employees: [],
-    loads: [],
-    stock: [],
-  });
+  const [data, setData] = useState<ScreeningBootstrap>(
+    emptyScreeningBootstrap(),
+  );
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{
     kind: "success" | "error";
@@ -326,20 +898,23 @@ export function ScreeningFactoryModule({
         "portal_screening_bootstrap",
         {
           p_token: sessionToken,
-          p_limit: 250,
+          p_limit: 500,
         },
       );
 
       if (error) throw error;
 
-      setData(
-        (response ?? {
-          incomingLoads: [],
-          employees: [],
-          loads: [],
-          stock: [],
-        }) as ScreeningBootstrap,
-      );
+      const nextData = (response ?? {}) as Partial<ScreeningBootstrap>;
+      setData({
+        ...emptyScreeningBootstrap(),
+        ...nextData,
+        incomingLoads: nextData.incomingLoads ?? [],
+        farmers: nextData.farmers ?? [],
+        settings: nextData.settings ?? defaultScreeningSettings(),
+        employees: nextData.employees ?? [],
+        loads: nextData.loads ?? [],
+        stock: nextData.stock ?? [],
+      });
     } catch (error) {
       setMessage({ kind: "error", text: errorText(error) });
     } finally {
@@ -365,14 +940,15 @@ export function ScreeningFactoryModule({
           p_token: sessionToken,
           p_load_id: payload.loadId,
           p_lot_number: payload.lotNumber,
-          p_farmer_name: payload.farmerName,
-          p_farm_name: payload.farmName || null,
+          p_farmer_id: payload.farmerId,
+          p_farm_id: payload.farmId,
           p_received_date: payload.receivedDate,
           p_received_weight_kg: payload.receivedWeightKg,
           p_truck_registration: payload.truckRegistration || null,
           p_transporter_name: payload.transporterName || null,
           p_driver_name: payload.driverName || null,
           p_notes: payload.notes || null,
+          p_erp_lots: payload.erpLots,
         },
       );
 
@@ -499,6 +1075,9 @@ export function ScreeningFactoryModule({
       });
 
       await loadData();
+      if (decision === "VALIDATE") {
+        setSection("reports");
+      }
       return true;
     } catch (error) {
       setMessage({ kind: "error", text: errorText(error) });
@@ -521,6 +1100,11 @@ export function ScreeningFactoryModule({
     { id: "incoming", label: "Incoming loads", managerOnly: true },
     { id: "new", label: "New screening load" },
     { id: "history", label: `Load history${pendingCount ? ` (${pendingCount})` : ""}` },
+    {
+      id: "reports",
+      label: `Screening reports (${data.loads.filter((load) => load.status === "VALIDATED").length})`,
+      managerOnly: true,
+    },
     { id: "stock", label: "Product stock" },
   ];
 
@@ -577,6 +1161,7 @@ export function ScreeningFactoryModule({
           onOpenIncoming={() => setSection("incoming")}
           onOpenNew={() => setSection("new")}
           onOpenHistory={() => setSection("history")}
+          onOpenReports={() => setSection("reports")}
           onOpenStock={() => setSection("stock")}
           onDecision={decideLoad}
         />
@@ -610,6 +1195,10 @@ export function ScreeningFactoryModule({
         />
       )}
 
+      {section === "reports" && profile.role === "manager" && (
+        <ScreeningReports data={data} />
+      )}
+
       {section === "stock" && <ScreeningStock data={data} />}
     </div>
   );
@@ -622,6 +1211,7 @@ function ControlRoom({
   onOpenIncoming,
   onOpenNew,
   onOpenHistory,
+  onOpenReports,
   onOpenStock,
   onDecision,
 }: {
@@ -631,6 +1221,7 @@ function ControlRoom({
   onOpenIncoming: () => void;
   onOpenNew: () => void;
   onOpenHistory: () => void;
+  onOpenReports: () => void;
   onOpenStock: () => void;
   onDecision: (
     loadId: string,
@@ -890,6 +1481,24 @@ function ControlRoom({
             </button>
           )}
 
+          {profile.role === "manager" && (
+            <button
+              type="button"
+              onClick={onOpenReports}
+              className="flex w-full items-center justify-between border border-[#cfc4b7] bg-white p-5 text-left transition hover:border-[#b86c2c]"
+            >
+              <span>
+                <span className="block text-[11px] font-black uppercase tracking-[0.14em] text-[#b86c2c]">
+                  Screening reports
+                </span>
+                <span className="mt-1 block text-xl font-black uppercase">
+                  Download validated PDF / Excel
+                </span>
+              </span>
+              <Download size={22} />
+            </button>
+          )}
+
           <button
             type="button"
             onClick={onOpenStock}
@@ -934,21 +1543,44 @@ function IncomingLoadsManagement({
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [lotNumber, setLotNumber] = useState("");
-  const [farmerName, setFarmerName] = useState("");
-  const [farmName, setFarmName] = useState("");
+  const [farmerId, setFarmerId] = useState("");
+  const [farmId, setFarmId] = useState("");
   const [receivedDate, setReceivedDate] = useState(isoDate(new Date()));
   const [receivedWeightKg, setReceivedWeightKg] = useState("");
   const [truckRegistration, setTruckRegistration] = useState("");
   const [transporterName, setTransporterName] = useState("");
   const [driverName, setDriverName] = useState("");
   const [notes, setNotes] = useState("");
+  const [erpLots, setErpLots] = useState<IncomingErpLots>(
+    blankIncomingErpLots(),
+  );
   const [search, setSearch] = useState("");
+
+  const farmers = data.farmers ?? [];
+  const selectedFarmer = useMemo(
+    () => farmers.find((farmer) => farmer.id === farmerId) ?? null,
+    [farmerId, farmers],
+  );
+  const availableFarms = selectedFarmer?.farms ?? [];
+
+  useEffect(() => {
+    if (!farmerId) {
+      setFarmId("");
+      return;
+    }
+
+    if (!availableFarms.some((farm) => farm.id === farmId)) {
+      setFarmId("");
+    }
+  }, [availableFarms, farmId, farmerId]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return data.incomingLoads;
     return data.incomingLoads.filter((load) =>
-      `${load.lotNumber} ${load.farmerName} ${load.farmName} ${load.truckRegistration} ${load.transporterName}`
+      `${load.lotNumber} ${load.farmerName} ${load.farmName} ${load.truckRegistration} ${load.transporterName} ${productOrder
+        .map((productType) => load.erpLots?.[productType] ?? "")
+        .join(" ")}`
         .toLowerCase()
         .includes(query),
     );
@@ -957,28 +1589,52 @@ function IncomingLoadsManagement({
   function resetForm() {
     setEditingId(null);
     setLotNumber("");
-    setFarmerName("");
-    setFarmName("");
+    setFarmerId("");
+    setFarmId("");
     setReceivedDate(isoDate(new Date()));
     setReceivedWeightKg("");
     setTruckRegistration("");
     setTransporterName("");
     setDriverName("");
     setNotes("");
+    setErpLots(blankIncomingErpLots());
   }
 
   function editLoad(load: IncomingLoadRow) {
     if (load.status !== "AVAILABLE") return;
     setEditingId(load.id);
     setLotNumber(load.lotNumber);
-    setFarmerName(load.farmerName);
-    setFarmName(load.farmName);
+
+    const matchedFarmer =
+      farmers.find((farmer) => farmer.id === load.farmerId)
+      ?? farmers.find(
+        (farmer) =>
+          farmer.farmerName.trim().toLowerCase()
+          === load.farmerName.trim().toLowerCase(),
+      )
+      ?? null;
+
+    const matchedFarm =
+      matchedFarmer?.farms.find((farm) => farm.id === load.farmId)
+      ?? matchedFarmer?.farms.find(
+        (farm) =>
+          farm.farmName.trim().toLowerCase()
+          === load.farmName.trim().toLowerCase(),
+      )
+      ?? null;
+
+    setFarmerId(matchedFarmer?.id ?? "");
+    setFarmId(matchedFarm?.id ?? "");
     setReceivedDate(load.receivedDate);
     setReceivedWeightKg(String(load.receivedWeightKg));
     setTruckRegistration(load.truckRegistration);
     setTransporterName(load.transporterName);
     setDriverName(load.driverName);
     setNotes(load.notes);
+    setErpLots({
+      ...blankIncomingErpLots(),
+      ...load.erpLots,
+    });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -988,14 +1644,20 @@ function IncomingLoadsManagement({
     const success = await onSave({
       loadId: editingId,
       lotNumber: lotNumber.trim().toUpperCase(),
-      farmerName: farmerName.trim(),
-      farmName: farmName.trim(),
+      farmerId,
+      farmId,
       receivedDate,
       receivedWeightKg: Number(receivedWeightKg || 0),
       truckRegistration: truckRegistration.trim().toUpperCase(),
       transporterName: transporterName.trim(),
       driverName: driverName.trim(),
       notes: notes.trim(),
+      erpLots: Object.fromEntries(
+        productOrder.map((productType) => [
+          productType,
+          erpLots[productType].trim().toUpperCase(),
+        ]),
+      ) as IncomingErpLots,
     });
 
     if (success) resetForm();
@@ -1023,9 +1685,32 @@ function IncomingLoadsManagement({
           Incoming farmer loads
         </h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-[#a89c92]">
-          Management records the truck once. Screening later selects the existing
-          farmer lot and receives its weight and supplier details automatically.
+          Management selects the registered farmer and farm, records the truck
+          once and assigns all five ERP product lots. Screening then receives the
+          complete load automatically.
         </p>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          <div className="border border-white/15 bg-white/5 px-4 py-3 sm:col-span-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#d78a46]">
+              FSC code
+            </p>
+            <p className="mt-1 font-mono text-sm font-black">
+              {data.settings.fscCode}
+            </p>
+          </div>
+          {productOrder.map((productType) => (
+            <div key={productType} className="border border-white/15 bg-white/5 px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#d78a46]">
+                {productShortLabels[productType]} price
+              </p>
+              <p className="mt-1 text-sm font-black">
+                {data.settings.currency}{" "}
+                {Number(data.settings.prices[productType] ?? 0).toLocaleString("en-NA")}
+                /t
+              </p>
+            </div>
+          ))}
+        </div>
       </section>
 
       <form onSubmit={submit} className="border border-[#cfc4b7] bg-white">
@@ -1035,7 +1720,7 @@ function IncomingLoadsManagement({
               {editingId ? "Edit available load" : "New incoming load"}
             </p>
             <p className="mt-1 text-sm font-semibold text-slate-600">
-              Required fields: farmer lot, farmer/supplier, date and received weight.
+              Select a registered farmer and farm. Received weight and all five ERP product lots are required.
             </p>
           </div>
           {editingId && (
@@ -1061,22 +1746,41 @@ function IncomingLoadsManagement({
           </Field>
 
           <Field label="Farmer / supplier">
-            <input
-              value={farmerName}
-              onChange={(event) => setFarmerName(event.target.value)}
-              placeholder="Farmer or supplier name"
+            <select
+              value={farmerId}
+              onChange={(event) => {
+                setFarmerId(event.target.value);
+                setFarmId("");
+              }}
               className={inputClass}
               required
-            />
+            >
+              <option value="">Select farmer</option>
+              {farmers.map((farmer) => (
+                <option key={farmer.id} value={farmer.id}>
+                  {farmer.farmerName}
+                </option>
+              ))}
+            </select>
           </Field>
 
           <Field label="Farm name">
-            <input
-              value={farmName}
-              onChange={(event) => setFarmName(event.target.value)}
-              placeholder="Optional farm name"
+            <select
+              value={farmId}
+              onChange={(event) => setFarmId(event.target.value)}
               className={inputClass}
-            />
+              disabled={!farmerId}
+              required
+            >
+              <option value="">
+                {farmerId ? "Select farm" : "Select farmer first"}
+              </option>
+              {availableFarms.map((farm) => (
+                <option key={farm.id} value={farm.id}>
+                  {farm.farmName}
+                </option>
+              ))}
+            </select>
           </Field>
 
           <Field label="Date received">
@@ -1131,6 +1835,40 @@ function IncomingLoadsManagement({
             />
           </Field>
 
+          <div className="md:col-span-2 xl:col-span-4">
+            <div className="border border-[#d8cec3] bg-[#f7f2ec]">
+              <div className="border-b border-[#d8cec3] bg-[#201a16] px-4 py-3 text-white">
+                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#d78a46]">
+                  ERP product lots · required
+                </p>
+                <p className="mt-1 text-xs font-semibold text-[#b8aca2]">
+                  One ERP lot for each product created from this farmer load.
+                </p>
+              </div>
+              <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
+                {productOrder.map((productType) => (
+                  <Field
+                    key={productType}
+                    label={`${productShortLabels[productType]} · ${productLabels[productType]}`}
+                  >
+                    <input
+                      value={erpLots[productType]}
+                      onChange={(event) =>
+                        setErpLots((current) => ({
+                          ...current,
+                          [productType]: event.target.value.toUpperCase(),
+                        }))
+                      }
+                      placeholder="ERP lot number"
+                      className={inputClass}
+                      required
+                    />
+                  </Field>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <div className="md:col-span-2 xl:col-span-3">
             <Field label="Comments">
               <input
@@ -1180,7 +1918,7 @@ function IncomingLoadsManagement({
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search lot, farmer, truck or transporter"
+              placeholder="Search farmer lot, ERP lot, farmer, truck or transporter"
               className={`${inputClass} pl-11`}
             />
           </div>
@@ -1205,6 +1943,7 @@ function IncomingLoadsManagement({
                   <th className="px-4 py-4">Received</th>
                   <th className="px-4 py-4 text-right">Weight</th>
                   <th className="px-4 py-4">Truck / Transporter</th>
+                  <th className="px-4 py-4">ERP product lots</th>
                   <th className="px-4 py-4">Status</th>
                   <th className="px-4 py-4 text-right">Action</th>
                 </tr>
@@ -1230,6 +1969,21 @@ function IncomingLoadsManagement({
                       <p className="mt-1 text-xs text-slate-500">
                         {load.transporterName || "—"}
                       </p>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="grid gap-1">
+                        {productOrder.map((productType) => (
+                          <p
+                            key={productType}
+                            className="font-mono text-[10px] font-black"
+                          >
+                            <span className="mr-2 text-[#b86c2c]">
+                              {productShortLabels[productType]}
+                            </span>
+                            {load.erpLots?.[productType] || "MISSING"}
+                          </p>
+                        ))}
+                      </div>
                     </td>
                     <td className="px-4 py-4">
                       <span
@@ -1295,7 +2049,10 @@ function ScreeningForm({
 
   const availableIncomingLoads = useMemo(
     () =>
-      data.incomingLoads.filter((load) => load.status === "AVAILABLE"),
+      data.incomingLoads.filter(
+        (load) =>
+          load.status === "AVAILABLE" && hasCompleteIncomingErpLots(load),
+      ),
     [data.incomingLoads],
   );
 
@@ -1304,6 +2061,11 @@ function ScreeningForm({
       data.incomingLoads.find((load) => load.id === incomingLoadId) ?? null,
     [data.incomingLoads, incomingLoadId],
   );
+
+  useEffect(() => {
+    if (!selectedIncomingLoad || editingId) return;
+    setProducts(productsFromIncomingLoad(selectedIncomingLoad));
+  }, [editingId, selectedIncomingLoad]);
 
   const numericRawWeight = Number(selectedIncomingLoad?.receivedWeightKg ?? 0);
   const totalOutput = products.reduce(
@@ -1387,7 +2149,7 @@ function ScreeningForm({
         </h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-[#a89c92]">
           Choose a load already entered by Management. The farmer lot, received
-          weight and delivery details are filled automatically.
+          weight, delivery details and five ERP product lots are filled automatically.
         </p>
       </section>
 
@@ -1448,13 +2210,24 @@ function ScreeningForm({
 
         {availableIncomingLoads.length === 0 && (
           <div className="border-t border-amber-300 bg-amber-50 px-5 py-4 text-sm font-bold text-amber-900">
-            No incoming farmer load is currently available. Management must record
-            the truck first.
+            No complete incoming farmer load is currently available. Management must
+            record the truck and all five ERP product lots first.
+          </div>
+        )}
+
+        {data.incomingLoads.some(
+          (load) =>
+            load.status === "AVAILABLE" && !hasCompleteIncomingErpLots(load),
+        ) && (
+          <div className="border-t border-red-300 bg-red-50 px-5 py-4 text-sm font-bold text-red-800">
+            Some older available loads are missing ERP product lots. Office must edit
+            those loads before Screening can select them.
           </div>
         )}
 
         {selectedIncomingLoad && (
-          <div className="grid gap-3 border-t border-[#d8cec3] bg-[#201a16] p-5 text-white sm:grid-cols-2 xl:grid-cols-5">
+          <div className="border-t border-[#d8cec3] bg-[#201a16] p-5 text-white">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             {[
               ["Farmer lot", selectedIncomingLoad.lotNumber],
               ["Farmer / Farm", `${selectedIncomingLoad.farmerName}${selectedIncomingLoad.farmName ? ` · ${selectedIncomingLoad.farmName}` : ""}`],
@@ -1469,6 +2242,23 @@ function ScreeningForm({
                 <p className="mt-2 text-sm font-black text-[#e0d7cf]">{value}</p>
               </div>
             ))}
+            </div>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              {productOrder.map((productType) => (
+                <div
+                  key={productType}
+                  className="border border-[#5a4637] bg-[#241b15] p-3"
+                >
+                  <p className="text-[10px] font-black uppercase tracking-[0.1em] text-[#d78a46]">
+                    {productShortLabels[productType]} ERP lot
+                  </p>
+                  <p className="mt-2 font-mono text-sm font-black text-white">
+                    {selectedIncomingLoad.erpLots[productType]}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -1558,7 +2348,7 @@ function ScreeningForm({
             03 · Five product outputs
           </p>
           <p className="mt-1 text-sm font-semibold text-slate-600">
-            Enter one ERP lot per product, not one lot per big bag.
+            ERP lots are assigned by Office. Enter only big bags and total weights.
           </p>
         </div>
 
@@ -1590,17 +2380,10 @@ function ScreeningForm({
                 </div>
 
                 <div className="grid gap-3 p-4 sm:grid-cols-3">
-                  <Field label="ERP lot number">
-                    <input
-                      value={product.erpLotNumber}
-                      onChange={(event) =>
-                        updateProduct(product.productType, {
-                          erpLotNumber: event.target.value.toUpperCase(),
-                        })
-                      }
-                      placeholder="ERP lot"
-                      className={inputClass}
-                    />
+                  <Field label="ERP lot number · Office">
+                    <div className="flex h-12 items-center border border-[#cfc4b7] bg-[#eee8e1] px-4 font-mono text-sm font-black text-[#4b3a2e]">
+                      {product.erpLotNumber || "Select an incoming load"}
+                    </div>
                   </Field>
 
                   <Field label="Big bags">
@@ -1938,6 +2721,10 @@ function ScreeningHistory({
                     </button>
                   )}
 
+                  {role === "manager" && load.status === "VALIDATED" && (
+                    <ReportDownloadButtons load={load} data={data} compact />
+                  )}
+
                   {role === "manager" && load.status === "SUBMITTED" && (
                     <>
                       <button
@@ -1973,6 +2760,204 @@ function ScreeningHistory({
               </div>
             </article>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReportDownloadButtons({
+  load,
+  data,
+  compact = false,
+}: {
+  load: ScreeningLoadRow;
+  data: ScreeningBootstrap;
+  compact?: boolean;
+}) {
+  function runDownload(format: "PDF" | "EXCEL") {
+    try {
+      const report = buildScreeningReportData(load, data);
+      if (format === "PDF") {
+        downloadScreeningReportPdf(report);
+      } else {
+        downloadScreeningReportExcel(report);
+      }
+    } catch (error) {
+      window.alert(errorText(error));
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      <button
+        type="button"
+        onClick={() => runDownload("PDF")}
+        className={`inline-flex items-center gap-2 border border-[#26744f] bg-emerald-50 font-black uppercase text-emerald-900 transition hover:bg-emerald-100 ${
+          compact ? "px-3 py-2 text-xs" : "px-4 py-3 text-sm"
+        }`}
+      >
+        <FileText size={compact ? 15 : 18} />
+        PDF report
+      </button>
+      <button
+        type="button"
+        onClick={() => runDownload("EXCEL")}
+        className={`inline-flex items-center gap-2 border border-[#315b8a] bg-blue-50 font-black uppercase text-blue-900 transition hover:bg-blue-100 ${
+          compact ? "px-3 py-2 text-xs" : "px-4 py-3 text-sm"
+        }`}
+      >
+        <FileSpreadsheet size={compact ? 15 : 18} />
+        Excel report
+      </button>
+    </div>
+  );
+}
+
+function ScreeningReports({ data }: { data: ScreeningBootstrap }) {
+  const [search, setSearch] = useState("");
+
+  const validatedLoads = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    return data.loads.filter((load) => {
+      if (load.status !== "VALIDATED") return false;
+      if (!query) return true;
+
+      const incoming = data.incomingLoads.find(
+        (item) => item.id === load.incomingLoadId,
+      );
+
+      return `${load.rawLotNumber} ${load.farmerName} ${load.farmName} ${incoming?.farmerName ?? ""} ${incoming?.farmName ?? ""}`
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [data.incomingLoads, data.loads, search]);
+
+  return (
+    <div className="space-y-6">
+      <section className="border border-[#2f2823] bg-[#171310] p-6 text-white">
+        <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-[#d78a46]">
+          Office documents
+        </p>
+        <h1 className="mt-2 text-4xl font-black uppercase tracking-tight">
+          Screening reports
+        </h1>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-[#a89c92]">
+          Reports become available immediately after Manager validation.
+          Download the farmer report as PDF or Excel at any time.
+        </p>
+      </section>
+
+      <section className="border border-[#cfc4b7] bg-white p-4">
+        <div className="relative">
+          <Search
+            size={17}
+            className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+          />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search report code, farmer or farm"
+            className={`${inputClass} pl-11`}
+          />
+        </div>
+      </section>
+
+      {validatedLoads.length === 0 ? (
+        <section className="grid min-h-72 place-items-center border border-[#cfc4b7] bg-white p-8 text-center">
+          <div>
+            <FileText size={42} className="mx-auto text-[#b9ada2]" />
+            <p className="mt-4 font-black uppercase text-slate-700">
+              No validated Screening Report
+            </p>
+            <p className="mt-2 text-sm text-slate-500">
+              Validate a submitted screening load to generate its report.
+            </p>
+          </div>
+        </section>
+      ) : (
+        <div className="space-y-4">
+          {validatedLoads.map((load) => {
+            const report = buildScreeningReportData(load, data);
+
+            return (
+              <article
+                key={load.id}
+                className="border border-[#cfc4b7] bg-white"
+              >
+                <div className="grid gap-5 p-5 lg:grid-cols-[1fr_auto] lg:items-center">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-2xl font-black uppercase">
+                        {report.reportCode}
+                      </h2>
+                      <span className="border border-emerald-300 bg-emerald-100 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-900">
+                        Report ready
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm font-black text-[#8a4e22]">
+                      {report.farmerName || "Farmer not recorded"} ·{" "}
+                      {report.farmName}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-500">
+                      Delivery {reportDate(report.deliveryDate)} ·{" "}
+                      {reportTonnage(report.totalTonnage)} t ·{" "}
+                      {report.currency} {reportNumber(report.totalValue, 2)}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-400">
+                      FSC {report.fscCode}
+                      {report.validatedAt
+                        ? ` · Validated ${formatDateTime(report.validatedAt)}`
+                        : ""}
+                    </p>
+                  </div>
+
+                  <ReportDownloadButtons load={load} data={data} />
+                </div>
+
+                <div className="overflow-x-auto border-t border-[#e4dcd3]">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-[#f6f2ed]">
+                      <tr className="text-left text-[10px] font-black uppercase tracking-[0.08em] text-slate-500">
+                        <th className="px-4 py-3">Quality</th>
+                        <th className="px-4 py-3 text-right">Price / t</th>
+                        <th className="px-4 py-3 text-right">Tonnage</th>
+                        <th className="px-4 py-3 text-right">Percentage</th>
+                        <th className="px-4 py-3 text-right">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.rows.map((row) => (
+                        <tr
+                          key={row.productType}
+                          className="border-t border-[#eee8e2]"
+                        >
+                          <td className="px-4 py-3 font-black">
+                            {row.qualityLabel}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono">
+                            {reportNumber(row.pricePerTon, 0)}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono">
+                            {reportTonnage(row.tonnage)}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono">
+                            {reportPercentage(row.percentage)}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono font-black">
+                            {row.value === 0
+                              ? "-"
+                              : reportNumber(row.value, 2)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
     </div>
