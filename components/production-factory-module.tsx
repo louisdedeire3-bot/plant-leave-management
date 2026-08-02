@@ -1,7 +1,8 @@
 "use client";
 
-// GCN PRODUCTION MODULE V1
-// Office orders, Supervisor execution, multi-lot traceability and Manager validation.
+// GCN PRODUCTION MODULE V2 — BREAKDOWNS
+// Office orders, Supervisor execution, multi-lot traceability,
+// breakdown/downtime recording and Manager validation.
 
 import {
   ArrowRight,
@@ -28,6 +29,7 @@ import {
   Trash2,
   UserRoundCheck,
   Warehouse,
+  Wrench,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -49,6 +51,15 @@ type ProductionStatus =
   | "CANCELLED";
 type RawMaterialType = "STANDARD" | "RESTAURANT" | "BRIQUETTE";
 type Shift = "DAY" | "NIGHT";
+type BreakdownCategory =
+  | "MECHANICAL"
+  | "ELECTRICAL"
+  | "PNEUMATIC_HYDRAULIC"
+  | "CONVEYOR"
+  | "WEIGHING_SCALE"
+  | "PRINTER"
+  | "BAGGING_MACHINE"
+  | "OTHER";
 
 export interface ProductionFactoryProfile {
   accountId: string;
@@ -114,6 +125,34 @@ interface ProductionOrderRawLot {
   availableBigBags: number;
 }
 
+interface ProductionBreakdown {
+  id: string;
+  category: BreakdownCategory;
+  equipment: string;
+  startTime: string;
+  endTime: string;
+  durationMinutes: number;
+  productionStopped: boolean;
+  maintenanceNotified: boolean;
+  description: string;
+  actionTaken: string;
+}
+
+interface RunBreakdownPayload {
+  category: BreakdownCategory;
+  equipment: string;
+  startTime: string;
+  endTime: string;
+  productionStopped: boolean;
+  maintenanceNotified: boolean;
+  description: string;
+  actionTaken: string;
+}
+
+interface BreakdownDraft extends RunBreakdownPayload {
+  clientId: string;
+}
+
 interface ProductionOrder {
   id: string;
   productCode: string;
@@ -147,6 +186,8 @@ interface ProductionOrder {
   netPackedWeightKg: number;
   employees: ProductionEmployee[];
   rawLots: ProductionOrderRawLot[];
+  breakdowns: ProductionBreakdown[];
+  totalDowntimeMinutes: number;
 }
 
 interface FinishedProductStockLot {
@@ -199,6 +240,7 @@ interface RunSavePayload {
   notes: string;
   employeeIds: string[];
   rawLots: RunRawLotPayload[];
+  breakdowns: RunBreakdownPayload[];
   submit: boolean;
 }
 
@@ -290,6 +332,39 @@ function isLineCompatible(
   if (product.rawMaterialType === "STANDARD") return line.allowsStandard;
   if (product.rawMaterialType === "RESTAURANT") return line.allowsRestaurant;
   return line.allowsBriquette;
+}
+
+const breakdownCategoryLabels: Record<BreakdownCategory, string> = {
+  MECHANICAL: "Mechanical",
+  ELECTRICAL: "Electrical",
+  PNEUMATIC_HYDRAULIC: "Pneumatic / Hydraulic",
+  CONVEYOR: "Conveyor",
+  WEIGHING_SCALE: "Weighing / Scale",
+  PRINTER: "Printer",
+  BAGGING_MACHINE: "Bagging machine",
+  OTHER: "Other",
+};
+
+const breakdownCategories = Object.keys(
+  breakdownCategoryLabels,
+) as BreakdownCategory[];
+
+function durationMinutes(start: string, end: string): number {
+  if (!start || !end) return 0;
+  const [startHour, startMinute] = start.split(":").map(Number);
+  const [endHour, endMinute] = end.split(":").map(Number);
+  let minutes = endHour * 60 + endMinute - (startHour * 60 + startMinute);
+  if (minutes < 0) minutes += 24 * 60;
+  return minutes;
+}
+
+function formatDowntime(minutes: number): string {
+  const safeMinutes = Math.max(0, Math.round(Number(minutes || 0)));
+  const hours = Math.floor(safeMinutes / 60);
+  const remainder = safeMinutes % 60;
+  if (hours === 0) return `${remainder} min`;
+  if (remainder === 0) return `${hours} h`;
+  return `${hours} h ${remainder} min`;
 }
 
 function durationHours(start: string, end: string): number {
@@ -426,6 +501,7 @@ export function ProductionFactoryModule({
         p_notes: payload.notes || null,
         p_employee_ids: payload.employeeIds,
         p_raw_lots: payload.rawLots,
+        p_breakdowns: payload.breakdowns,
         p_submit: payload.submit,
       });
 
@@ -1351,6 +1427,7 @@ function ProductionRunForm({
   const [selectedRawLots, setSelectedRawLots] = useState<
     RunRawLotPayload[]
   >([]);
+  const [breakdowns, setBreakdowns] = useState<BreakdownDraft[]>([]);
 
   const selectedOrder =
     data.orders.find((order) => order.id === orderId) ?? null;
@@ -1377,6 +1454,7 @@ function ProductionRunForm({
       setNotes("");
       setSelectedEmployeeIds([]);
       setSelectedRawLots([]);
+      setBreakdowns([]);
       setRawLotSelect("");
       return;
     }
@@ -1398,6 +1476,19 @@ function ProductionRunForm({
         sourceModule: lot.sourceModule,
         sourceLotId: lot.sourceLotId,
         lotFinished: lot.lotFinished,
+      })),
+    );
+    setBreakdowns(
+      (selectedOrder.breakdowns ?? []).map((breakdown) => ({
+        clientId: breakdown.id,
+        category: breakdown.category,
+        equipment: breakdown.equipment,
+        startTime: breakdown.startTime?.slice(0, 5) ?? "",
+        endTime: breakdown.endTime?.slice(0, 5) ?? "",
+        productionStopped: breakdown.productionStopped,
+        maintenanceNotified: breakdown.maintenanceNotified,
+        description: breakdown.description,
+        actionTaken: breakdown.actionTaken,
       })),
     );
     setRawLotSelect("");
@@ -1433,6 +1524,23 @@ function ProductionRunForm({
     ? actual * selectedOrder.bagWeightKg
     : 0;
   const runDuration = durationHours(startTime, endTime);
+  const totalDowntimeMinutes = breakdowns.reduce(
+    (sum, breakdown) =>
+      sum +
+      (breakdown.productionStopped
+        ? durationMinutes(breakdown.startTime, breakdown.endTime)
+        : 0),
+    0,
+  );
+  const breakdownsValid = breakdowns.every(
+    (breakdown) =>
+      breakdown.category &&
+      breakdown.equipment.trim() &&
+      breakdown.startTime &&
+      breakdown.endTime &&
+      durationMinutes(breakdown.startTime, breakdown.endTime) > 0 &&
+      breakdown.description.trim(),
+  );
 
   function resetForm() {
     setOrderId("");
@@ -1445,6 +1553,7 @@ function ProductionRunForm({
     setSelectedEmployeeIds([]);
     setRawLotSelect("");
     setSelectedRawLots([]);
+    setBreakdowns([]);
   }
 
   function toggleEmployee(employeeId: string) {
@@ -1483,6 +1592,42 @@ function ProductionRunForm({
     );
   }
 
+  function addBreakdown() {
+    setBreakdowns((current) => [
+      ...current,
+      {
+        clientId: crypto.randomUUID(),
+        category: "MECHANICAL",
+        equipment: selectedOrder?.lineName ?? "",
+        startTime: "",
+        endTime: "",
+        productionStopped: true,
+        maintenanceNotified: false,
+        description: "",
+        actionTaken: "",
+      },
+    ]);
+  }
+
+  function updateBreakdown(
+    clientId: string,
+    patch: Partial<BreakdownDraft>,
+  ) {
+    setBreakdowns((current) =>
+      current.map((breakdown) =>
+        breakdown.clientId === clientId
+          ? { ...breakdown, ...patch }
+          : breakdown,
+      ),
+    );
+  }
+
+  function removeBreakdown(clientId: string) {
+    setBreakdowns((current) =>
+      current.filter((breakdown) => breakdown.clientId !== clientId),
+    );
+  }
+
   function rawLotDetails(sourceLotId: string) {
     const live = data.rawLots.find((lot) => lot.id === sourceLotId);
     if (live) return live;
@@ -1516,6 +1661,9 @@ function ProductionRunForm({
       notes: notes.trim(),
       employeeIds: selectedEmployeeIds,
       rawLots: selectedRawLots,
+      breakdowns: breakdowns.map(
+        ({ clientId: _clientId, ...breakdown }) => breakdown,
+      ),
       submit,
     });
 
@@ -1779,9 +1927,229 @@ function ProductionRunForm({
           </section>
 
           <section className="border border-[#cfc4b7] bg-white">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d8cec3] bg-[#f4efe9] px-5 py-4">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#b86c2c]">
+                  04 · Breakdowns and downtime
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-600">
+                  Add one record for every machine stoppage or technical breakdown.
+                  Leave this section empty when no breakdown occurred.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={addBreakdown}
+                className="inline-flex h-10 items-center gap-2 bg-[#171310] px-4 text-xs font-black uppercase text-white"
+              >
+                <Plus size={16} />
+                Add breakdown
+              </button>
+            </div>
+
+            {breakdowns.length === 0 ? (
+              <div className="grid min-h-40 place-items-center p-6 text-center">
+                <div>
+                  <Wrench size={32} className="mx-auto text-[#b9ada2]" />
+                  <p className="mt-3 font-black uppercase text-slate-700">
+                    No breakdown recorded
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    The Production Run can be submitted without a breakdown.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4 p-5">
+                {breakdowns.map((breakdown, index) => {
+                  const downtime = durationMinutes(
+                    breakdown.startTime,
+                    breakdown.endTime,
+                  );
+
+                  return (
+                    <article
+                      key={breakdown.clientId}
+                      className="border border-[#d8cec3] bg-[#faf8f5]"
+                    >
+                      <div className="flex items-center justify-between gap-3 border-b border-[#ded5cb] bg-[#201a16] px-4 py-3 text-white">
+                        <div className="flex items-center gap-3">
+                          <CircleAlert size={18} className="text-[#d78a46]" />
+                          <h3 className="font-black uppercase">
+                            Breakdown {index + 1}
+                          </h3>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono text-xs font-black text-[#d78a46]">
+                            {formatDowntime(downtime)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeBreakdown(breakdown.clientId)}
+                            className="grid h-8 w-8 place-items-center border border-[#5b4b40] text-red-300 hover:border-red-400"
+                            title="Remove breakdown"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-4">
+                        <Field label="Breakdown category">
+                          <select
+                            value={breakdown.category}
+                            onChange={(event) =>
+                              updateBreakdown(breakdown.clientId, {
+                                category: event.target
+                                  .value as BreakdownCategory,
+                              })
+                            }
+                            className={inputClass}
+                          >
+                            {breakdownCategories.map((category) => (
+                              <option key={category} value={category}>
+                                {breakdownCategoryLabels[category]}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+
+                        <Field label="Equipment / machine affected">
+                          <input
+                            value={breakdown.equipment}
+                            onChange={(event) =>
+                              updateBreakdown(breakdown.clientId, {
+                                equipment: event.target.value,
+                              })
+                            }
+                            placeholder="Bagging machine, conveyor, printer..."
+                            className={inputClass}
+                          />
+                        </Field>
+
+                        <Field label="Breakdown start">
+                          <input
+                            type="time"
+                            value={breakdown.startTime}
+                            onChange={(event) =>
+                              updateBreakdown(breakdown.clientId, {
+                                startTime: event.target.value,
+                              })
+                            }
+                            className={inputClass}
+                          />
+                        </Field>
+
+                        <Field label="Breakdown end">
+                          <input
+                            type="time"
+                            value={breakdown.endTime}
+                            onChange={(event) =>
+                              updateBreakdown(breakdown.clientId, {
+                                endTime: event.target.value,
+                              })
+                            }
+                            className={inputClass}
+                          />
+                        </Field>
+
+                        <Field label="Production stopped">
+                          <select
+                            value={
+                              breakdown.productionStopped ? "YES" : "NO"
+                            }
+                            onChange={(event) =>
+                              updateBreakdown(breakdown.clientId, {
+                                productionStopped:
+                                  event.target.value === "YES",
+                              })
+                            }
+                            className={inputClass}
+                          >
+                            <option value="YES">Yes</option>
+                            <option value="NO">No</option>
+                          </select>
+                        </Field>
+
+                        <Field label="Maintenance notified">
+                          <select
+                            value={
+                              breakdown.maintenanceNotified ? "YES" : "NO"
+                            }
+                            onChange={(event) =>
+                              updateBreakdown(breakdown.clientId, {
+                                maintenanceNotified:
+                                  event.target.value === "YES",
+                              })
+                            }
+                            className={inputClass}
+                          >
+                            <option value="NO">No</option>
+                            <option value="YES">Yes</option>
+                          </select>
+                        </Field>
+
+                        <div className="md:col-span-2">
+                          <Field label="Breakdown description">
+                            <input
+                              value={breakdown.description}
+                              onChange={(event) =>
+                                updateBreakdown(breakdown.clientId, {
+                                  description: event.target.value,
+                                })
+                              }
+                              placeholder="What happened?"
+                              className={inputClass}
+                            />
+                          </Field>
+                        </div>
+
+                        <div className="md:col-span-2 xl:col-span-4">
+                          <Field label="Action taken">
+                            <input
+                              value={breakdown.actionTaken}
+                              onChange={(event) =>
+                                updateBreakdown(breakdown.clientId, {
+                                  actionTaken: event.target.value,
+                                })
+                              }
+                              placeholder="Temporary fix, maintenance action or parts changed"
+                              className={inputClass}
+                            />
+                          </Field>
+                        </div>
+                      </div>
+
+                      {(!breakdown.startTime ||
+                        !breakdown.endTime ||
+                        downtime <= 0 ||
+                        !breakdown.equipment.trim() ||
+                        !breakdown.description.trim()) && (
+                        <div className="border-t border-amber-300 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-900">
+                          Start time, end time, equipment and description are
+                          required before submission.
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+
+                <div className="flex items-center justify-between border border-[#2f2823] bg-[#171310] p-4 text-white">
+                  <span className="text-xs font-black uppercase tracking-[0.12em] text-[#a89c92]">
+                    Total recorded downtime
+                  </span>
+                  <span className="font-mono text-xl font-black text-[#d78a46]">
+                    {formatDowntime(totalDowntimeMinutes)}
+                  </span>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="border border-[#cfc4b7] bg-white">
             <div className="border-b border-[#d8cec3] bg-[#f4efe9] px-5 py-4">
               <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#b86c2c]">
-                04 · Actual production result
+                05 · Actual production result
               </p>
             </div>
             <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
@@ -1826,11 +2194,11 @@ function ProductionRunForm({
               </Field>
 
               <div className="md:col-span-2 xl:col-span-4">
-                <Field label="Production notes / machine incidents">
+                <Field label="Production notes / other incidents">
                   <input
                     value={notes}
                     onChange={(event) => setNotes(event.target.value)}
-                    placeholder="Optional production notes, stoppages or incidents"
+                    placeholder="Optional production notes or non-breakdown incidents"
                     className={inputClass}
                   />
                 </Field>
@@ -1838,7 +2206,7 @@ function ProductionRunForm({
             </div>
           </section>
 
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
             {[
               ["Target bags", formatNumber(selectedOrder.targetBags)],
               ["Actual bags", formatNumber(actual)],
@@ -1848,6 +2216,8 @@ function ProductionRunForm({
               ],
               ["Achievement", `${achievement.toFixed(1)}%`],
               ["Net packed", formatKg(packedWeight)],
+              ["Breakdowns", formatNumber(breakdowns.length)],
+              ["Downtime", formatDowntime(totalDowntimeMinutes)],
             ].map(([label, value]) => (
               <div
                 key={label}
@@ -1908,7 +2278,8 @@ function ProductionRunForm({
                   selectedEmployeeIds.length === 0 ||
                   selectedRawLots.length === 0 ||
                   !startTime ||
-                  !endTime
+                  !endTime ||
+                  !breakdownsValid
                 }
                 onClick={() => void submitRun(true)}
                 className="inline-flex h-12 items-center gap-2 bg-[#d78a46] px-6 text-sm font-black uppercase text-[#171310] hover:bg-[#e49b58] disabled:opacity-50"
@@ -2120,11 +2491,19 @@ function ProductionHistory({
                   <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[#b86c2c]">
                     Production result
                   </p>
-                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
                     <InfoBox label="Good bags" value={formatNumber(order.actualBags)} />
                     <InfoBox label="Rejected" value={formatNumber(order.rejectedBags)} />
                     <InfoBox label="Achievement" value={`${Number(order.achievementPercent || 0).toFixed(1)}%`} />
                     <InfoBox label="Net packed" value={formatKg(order.netPackedWeightKg)} />
+                    <InfoBox
+                      label="Breakdowns"
+                      value={formatNumber(order.breakdowns?.length ?? 0)}
+                    />
+                    <InfoBox
+                      label="Downtime"
+                      value={formatDowntime(order.totalDowntimeMinutes)}
+                    />
                   </div>
                   <p className="mt-3 text-xs font-semibold text-slate-500">
                     Time: {order.startTime || "—"} → {order.endTime || "—"} ·{" "}
@@ -2134,6 +2513,55 @@ function ProductionHistory({
                     <p className="mt-3 border border-[#ddd4cb] bg-[#faf8f5] p-3 text-sm text-slate-700">
                       {order.productionNotes}
                     </p>
+                  )}
+
+                  {(order.breakdowns?.length ?? 0) > 0 && (
+                    <div className="mt-4 space-y-2">
+                      <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[#b86c2c]">
+                        Breakdown detail
+                      </p>
+                      {(order.breakdowns ?? []).map((breakdown, index) => (
+                        <div
+                          key={breakdown.id}
+                          className="border border-red-200 bg-red-50 p-3"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-black text-red-900">
+                                {index + 1}.{" "}
+                                {breakdownCategoryLabels[breakdown.category]} ·{" "}
+                                {breakdown.equipment}
+                              </p>
+                              <p className="mt-1 text-xs font-semibold text-red-700">
+                                {breakdown.startTime} → {breakdown.endTime} ·{" "}
+                                {formatDowntime(breakdown.durationMinutes)}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <span className="border border-red-300 bg-white px-2 py-1 text-[10px] font-black uppercase text-red-800">
+                                {breakdown.productionStopped
+                                  ? "Production stopped"
+                                  : "Production continued"}
+                              </span>
+                              <span className="border border-slate-300 bg-white px-2 py-1 text-[10px] font-black uppercase text-slate-700">
+                                Maintenance{" "}
+                                {breakdown.maintenanceNotified
+                                  ? "notified"
+                                  : "not notified"}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="mt-2 text-sm text-red-900">
+                            {breakdown.description}
+                          </p>
+                          {breakdown.actionTaken && (
+                            <p className="mt-2 text-xs font-semibold text-red-700">
+                              Action taken: {breakdown.actionTaken}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>
