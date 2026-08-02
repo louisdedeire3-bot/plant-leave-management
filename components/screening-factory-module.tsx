@@ -1,6 +1,6 @@
 "use client";
 
-// GCN SCREENING MODULE V45 OFFICIAL REPORT
+// GCN SCREENING MODULE V46 SCREENING LINE SELECTOR
 // Includes: Farmer/Farm master, Office-assigned ERP lots,
 // Manager validation, official Screening Reports, PDF export and Excel export.
 // Report Code = Delivery Note Number = Farmer Lot Number.
@@ -2157,6 +2157,7 @@ function ScreeningForm({
 
   async function submitForm(submit: boolean) {
     if (!incomingLoadId) return;
+    if (submit && !lineName) return;
 
     const success = await onSave({
       loadId: editingId,
@@ -2236,13 +2237,17 @@ function ScreeningForm({
             </select>
           </Field>
 
-          <Field label="Screening line / machine">
-            <input
+          <Field label="Screening line">
+            <select
               value={lineName}
               onChange={(event) => setLineName(event.target.value)}
-              placeholder="Trommel / screening line"
               className={inputClass}
-            />
+              required
+            >
+              <option value="">Select screening line</option>
+              <option value="SCREENING LINE 1">Screening Line 1</option>
+              <option value="SCREENING LINE 2">Screening Line 2</option>
+            </select>
           </Field>
         </div>
 
@@ -2510,7 +2515,7 @@ function ScreeningForm({
 
         <button
           type="button"
-          disabled={loading || !incomingLoadId}
+          disabled={loading || !incomingLoadId || !lineName}
           onClick={() => void submitForm(true)}
           className="inline-flex h-12 items-center gap-2 bg-[#d78a46] px-6 text-sm font-black uppercase text-[#171310] hover:bg-[#e49b58] disabled:opacity-50"
         >
