@@ -1,5 +1,7 @@
 "use client";
 
+// GCN FACTORY PORTAL V2 — PRODUCTION MODULE LIVE
+
 import {
   ArrowRight,
   BarChart3,
@@ -28,6 +30,10 @@ import {
   ScreeningFactoryModule,
   type ScreeningFactoryProfile,
 } from "@/components/screening-factory-module";
+import {
+  ProductionFactoryModule,
+  type ProductionFactoryProfile,
+} from "@/components/production-factory-module";
 
 type PortalRole = "employee" | "supervisor" | "manager";
 type FactoryModuleId =
@@ -108,9 +114,9 @@ const modules: FactoryModuleDefinition[] = [
   {
     id: "production",
     label: "Production",
-    description: "Bag output, selected screening lots and consumables",
+    description: "Office orders, production runs, raw lots and finished stock",
     icon: Gauge,
-    state: "NEXT",
+    state: "LIVE",
   },
   {
     id: "briquettes",
@@ -547,7 +553,14 @@ export function FactoryPortalApp() {
             />
           )}
 
-          {!["dashboard", "leave", "screening"].includes(activeModule) && (
+          {activeModule === "production" && (
+            <ProductionFactoryModule
+              profile={profile as ProductionFactoryProfile}
+              sessionToken={sessionToken}
+            />
+          )}
+
+          {!["dashboard", "leave", "screening", "production"].includes(activeModule) && (
             <PlannedModule
               module={
                 modules.find((module) => module.id === activeModule) ??
