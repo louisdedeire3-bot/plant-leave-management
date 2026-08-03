@@ -17,7 +17,6 @@ import {
   LogOut,
   PackageCheck,
   Settings,
-  ShieldCheck,
   Truck,
   UserCog,
   UsersRound,
@@ -431,15 +430,19 @@ export function FactoryPortalApp() {
             onClick={() => selectModule("dashboard")}
             className="flex items-center gap-3 text-left"
           >
-            <span className="grid h-12 w-12 place-items-center bg-[#d78a46] text-[#171310]">
-              <Factory size={25} />
+            <span className="flex h-12 w-[168px] items-center bg-white px-2.5 shadow-sm sm:w-[190px]">
+              <img
+                src="/green-charcoal-namibia-logo.png"
+                alt="Green Charcoal Namibia"
+                className="h-auto w-full"
+              />
             </span>
-            <span>
+            <span className="hidden sm:block">
               <span className="block text-lg font-black uppercase tracking-tight">
                 Factory Portal
               </span>
               <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-[#9f9389]">
-                Green Charcoal Namibia
+                Plant operations
               </span>
             </span>
           </button>
@@ -602,11 +605,12 @@ function FactoryPortalLogin({
             <div className="absolute bottom-16 right-10 h-80 w-80 rounded-full bg-[#34513d] blur-[130px]" />
           </div>
 
-          <div className="relative inline-flex w-fit items-center gap-3 border border-[#51443a] bg-[#201a16] px-4 py-3">
-            <Factory size={22} className="text-[#d78a46]" />
-            <span className="text-xs font-black uppercase tracking-[0.2em] text-[#cbbfb4]">
-              Green Charcoal Namibia
-            </span>
+          <div className="relative flex w-fit items-center border border-[#51443a] bg-white px-5 py-4 shadow-2xl">
+            <img
+              src="/green-charcoal-namibia-logo.png"
+              alt="Green Charcoal Namibia"
+              className="h-auto w-72"
+            />
           </div>
 
           <div className="relative max-w-3xl">
@@ -647,8 +651,12 @@ function FactoryPortalLogin({
             onSubmit={submit}
             className="w-full max-w-lg border border-[#463b33] bg-[#1b1714] p-6 shadow-2xl sm:p-9"
           >
-            <div className="grid h-14 w-14 place-items-center bg-[#d78a46] text-[#171310]">
-              <ShieldCheck size={28} />
+            <div className="flex w-full max-w-[300px] items-center bg-white px-4 py-3 shadow-lg">
+              <img
+                src="/green-charcoal-namibia-logo.png"
+                alt="Green Charcoal Namibia"
+                className="h-auto w-full"
+              />
             </div>
 
             <p className="mt-8 text-xs font-black uppercase tracking-[0.18em] text-[#d78a46]">
