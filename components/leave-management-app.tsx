@@ -192,6 +192,7 @@ interface AdminEmployeeRow {
   employee_code: string;
   first_name: string;
   surname: string;
+  birth_date: string | null;
   department: string;
   position_title: string;
   primary_role: string;
@@ -213,6 +214,7 @@ interface EmployeeEditorState {
   employeeCode: string;
   firstName: string;
   surname: string;
+  birthDate: string;
   department: string;
   positionTitle: string;
   primaryRole: string;
@@ -508,6 +510,7 @@ const uiCopyEn = {
   employeeId: "Employee ID",
   firstName: "First name",
   surname: "Surname",
+  dateOfBirth: "Date of birth",
   positionTitle: "Position title",
   primaryRole: "Primary role",
   portalRole: "Portal role",
@@ -671,6 +674,7 @@ const uiCopy = {
     employeeId: "Werknemer-ID",
     firstName: "Voornaam",
     surname: "Van",
+    dateOfBirth: "Geboortedatum",
     positionTitle: "Postitel",
     primaryRole: "Primêre rol",
     portalRole: "Portaalrol",
@@ -1450,6 +1454,7 @@ export function LeaveManagementApp() {
       employeeCode: "",
       firstName: "",
       surname: "",
+      birthDate: "",
       department: "",
       positionTitle: "",
       primaryRole: "",
@@ -1467,6 +1472,7 @@ export function LeaveManagementApp() {
       employeeCode: employee.employee_code,
       firstName: employee.first_name,
       surname: employee.surname,
+      birthDate: employee.birth_date ?? "",
       department: employee.department === "Unassigned" ? "" : employee.department,
       positionTitle: employee.position_title ?? "",
       primaryRole: employee.primary_role ?? "",
@@ -1489,6 +1495,7 @@ export function LeaveManagementApp() {
         p_employee_code: employeeEditor.employeeCode,
         p_first_name: employeeEditor.firstName,
         p_surname: employeeEditor.surname,
+        p_birth_date: employeeEditor.birthDate || null,
         p_department: employeeEditor.department || "Unassigned",
         p_position_title: employeeEditor.positionTitle,
         p_primary_role: employeeEditor.primaryRole,
@@ -3456,6 +3463,21 @@ function EmployeeManagementPanel({
               <EditorField label={localizedCopy[language].status}><select value={editor.active ? "active" : "inactive"} onChange={(e) => onChange({ ...editor, active: e.target.value === "active" })} className={inputClass}><option value="active">{u.active}</option><option value="inactive">{u.inactive}</option></select></EditorField>
               <EditorField label={u.firstName}><input value={editor.firstName} onChange={(e) => onChange({ ...editor, firstName: e.target.value })} className={inputClass} /></EditorField>
               <EditorField label={u.surname}><input value={editor.surname} onChange={(e) => onChange({ ...editor, surname: e.target.value })} className={inputClass} /></EditorField>
+              <EditorField label={u.dateOfBirth}>
+                <input
+                  type="date"
+                  required={!editor.id}
+                  max={isoDate(new Date())}
+                  value={editor.birthDate}
+                  onChange={(e) => onChange({ ...editor, birthDate: e.target.value })}
+                  className={inputClass}
+                />
+                {!editor.id && (
+                  <span className="mt-2 block text-xs font-bold text-amber-700">
+                    Initial password: DDMMYY, generated automatically.
+                  </span>
+                )}
+              </EditorField>
               <EditorField label={localizedCopy[language].department}><input list="employee-departments" value={editor.department} onChange={(e) => onChange({ ...editor, department: e.target.value })} placeholder="Production" className={inputClass}/><datalist id="employee-departments">{options.departments.map((d) => <option key={d} value={d}/>)}</datalist></EditorField>
               <EditorField label={u.positionTitle}><input value={editor.positionTitle} onChange={(e) => onChange({ ...editor, positionTitle: e.target.value })} placeholder="Machine Operator" className={inputClass}/></EditorField>
               <EditorField label={u.primaryRole}><input value={editor.primaryRole} onChange={(e) => onChange({ ...editor, primaryRole: e.target.value })} placeholder="Machine Operator" className={inputClass}/></EditorField>
@@ -3475,7 +3497,7 @@ function EmployeeManagementPanel({
 
             <div className="flex justify-end gap-3 border-t border-slate-300 bg-slate-50 p-5">
               <button onClick={onClose} className="border border-slate-300 bg-white px-5 py-3 text-sm font-black uppercase">{u.cancel}</button>
-              <button disabled={busy || !editor.employeeCode || !editor.firstName || !editor.surname} onClick={onSave} className="inline-flex items-center gap-2 bg-blue-600 px-5 py-3 text-sm font-black uppercase text-white hover:bg-blue-500 disabled:opacity-50">{busy ? <LoaderCircle className="animate-spin" size={17}/> : <Check size={17}/>} {u.saveEmployee}</button>
+              <button disabled={busy || !editor.employeeCode || !editor.firstName || !editor.surname || (!editor.id && !editor.birthDate)} onClick={onSave} className="inline-flex items-center gap-2 bg-blue-600 px-5 py-3 text-sm font-black uppercase text-white hover:bg-blue-500 disabled:opacity-50">{busy ? <LoaderCircle className="animate-spin" size={17}/> : <Check size={17}/>} {u.saveEmployee}</button>
             </div>
           </div>
         </div>
