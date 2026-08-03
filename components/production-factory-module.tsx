@@ -18,6 +18,7 @@ import {
   History,
   Layers3,
   LoaderCircle,
+  Mail,
   PackageCheck,
   Pencil,
   Play,
@@ -220,6 +221,10 @@ interface ProductionConsumable {
   consumableType: "BAG" | "SLIP_SHEET";
   unit: string;
   currentStock: number;
+  minimumStock: number | null;
+  supplierName: string;
+  supplierEmail: string;
+  supplierCcEmails: string[];
   active: boolean;
   configuredProducts: number;
   updatedAt: string;
@@ -3144,6 +3149,9 @@ function ProductionConsumableStock({
   const [selectedItemId, setSelectedItemId] = useState("");
   const [quantityDelta, setQuantityDelta] = useState("");
   const [comment, setComment] = useState("");
+  const [reorderQuantities, setReorderQuantities] = useState<
+    Record<string, string>
+  >({});
 
   useEffect(() => {
     if (
@@ -3163,6 +3171,12 @@ function ProductionConsumableStock({
   const negativeItems = data.consumables.filter(
     (item) => Number(item.currentStock || 0) < 0,
   ).length;
+  const lowSlipSheetItems = data.consumables.filter(
+    (item) =>
+      item.consumableType === "SLIP_SHEET" &&
+      Number.isFinite(Number(item.minimumStock)) &&
+      Number(item.currentStock || 0) <= Number(item.minimumStock),
+  );
 
   async function submitAdjustment() {
     const delta = Number(quantityDelta);
@@ -3174,6 +3188,43 @@ function ProductionConsumableStock({
       setQuantityDelta("");
       setComment("");
     }
+  }
+
+  function prepareSlipSheetOrderEmail(item: ProductionConsumable) {
+    const quantity = Number(reorderQuantities[item.id]);
+    if (
+      !Number.isInteger(quantity) ||
+      quantity <= 0 ||
+      !item.supplierEmail
+    ) {
+      return;
+    }
+
+    const subject = "Slip sheet order - Green Charcoal Namibia";
+    const body = [
+      `Dear ${item.supplierName || "Supplier"} team,`,
+      "",
+      "Our slip sheet stock has reached the reorder threshold.",
+      "",
+      `Current stock: ${formatNumber(item.currentStock)} units`,
+      `Minimum stock level: ${formatNumber(item.minimumStock ?? 250)} units`,
+      `Requested order quantity: ${formatNumber(quantity)} units`,
+      "",
+      "Please confirm availability and the expected delivery date.",
+      "",
+      "Kind regards,",
+      "Green Charcoal Namibia",
+    ].join("\n");
+    const cc = (item.supplierCcEmails ?? []).filter(Boolean).join(",");
+    const query = [
+      cc ? `cc=${encodeURIComponent(cc)}` : "",
+      `subject=${encodeURIComponent(subject)}`,
+      `body=${encodeURIComponent(body)}`,
+    ]
+      .filter(Boolean)
+      .join("&");
+
+    window.location.href = `mailto:${item.supplierEmail}?${query}`;
   }
 
   return (
@@ -3213,6 +3264,88 @@ function ProductionConsumableStock({
           value={formatNumber(negativeItems)}
         />
       </section>
+
+      {lowSlipSheetItems.map((item) => {
+        const reorderQuantity = Number(reorderQuantities[item.id]);
+        const canPrepareEmail =
+          Number.isInteger(reorderQuantity) &&
+          reorderQuantity > 0 &&
+          Boolean(item.supplierEmail);
+
+        return (
+          <section
+            key={`low-stock-${item.id}`}
+            className="border-2 border-red-500 bg-red-50"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-red-200 px-5 py-4">
+              <div className="flex items-start gap-3">
+                <CircleAlert className="mt-0.5 text-red-700" size={24} />
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-red-700">
+                    Slip sheet reorder required
+                  </p>
+                  <h2 className="mt-1 text-xl font-black uppercase text-[#171310]">
+                    {formatNumber(item.currentStock)} units remaining
+                  </h2>
+                  <p className="mt-1 text-sm font-semibold text-red-800">
+                    The MPACT alert threshold is{" "}
+                    {formatNumber(item.minimumStock ?? 250)} units.
+                  </p>
+                </div>
+              </div>
+              <div className="border border-red-300 bg-white px-4 py-3 text-xs font-bold text-slate-700">
+                <p>
+                  To: <span className="font-mono">{item.supplierEmail}</span>
+                </p>
+                <p className="mt-1">
+                  CC:{" "}
+                  <span className="font-mono">
+                    {(item.supplierCcEmails ?? []).join(", ")}
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            {profile.role === "manager" ? (
+              <div className="grid gap-4 p-5 lg:grid-cols-[260px_auto] lg:items-end">
+                <Field label="Quantity to order">
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={reorderQuantities[item.id] ?? ""}
+                    onChange={(event) =>
+                      setReorderQuantities((current) => ({
+                        ...current,
+                        [item.id]: event.target.value,
+                      }))
+                    }
+                    placeholder="e.g. 1000"
+                    className={inputClass}
+                  />
+                </Field>
+                <button
+                  type="button"
+                  disabled={!canPrepareEmail}
+                  onClick={() => prepareSlipSheetOrderEmail(item)}
+                  className="inline-flex h-12 items-center justify-center gap-2 bg-red-700 px-5 text-xs font-black uppercase text-white disabled:opacity-40 lg:w-fit"
+                >
+                  <Mail size={17} />
+                  Prepare order email
+                </button>
+                <p className="text-xs font-semibold text-slate-600 lg:col-span-2">
+                  The email opens pre-filled in your mail application. Management
+                  reviews it and sends it manually.
+                </p>
+              </div>
+            ) : (
+              <p className="p-5 text-sm font-bold text-red-800">
+                Management has been notified that slip sheets must be reordered.
+              </p>
+            )}
+          </section>
+        );
+      })}
 
       {data.consumables.length === 0 ? (
         <section className="border border-[#cfc4b7] bg-white">
@@ -3258,6 +3391,13 @@ function ProductionConsumableStock({
                   <p className="text-[10px] font-black uppercase text-slate-500">
                     {item.unit}
                   </p>
+                  {item.consumableType === "SLIP_SHEET" &&
+                    item.minimumStock !== null &&
+                    Number.isFinite(Number(item.minimumStock)) && (
+                      <p className="mt-2 text-[10px] font-black uppercase text-red-700">
+                        Alert at {formatNumber(item.minimumStock)}
+                      </p>
+                    )}
                 </div>
               </div>
               <div className="mt-4 flex items-center justify-between border-t border-[#e4dcd3] pt-3 text-xs font-bold text-slate-500">
