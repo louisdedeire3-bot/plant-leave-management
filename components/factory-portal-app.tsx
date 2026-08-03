@@ -430,19 +430,19 @@ export function FactoryPortalApp() {
             onClick={() => selectModule("dashboard")}
             className="flex items-center gap-3 text-left"
           >
-            <span className="flex h-12 w-[168px] items-center bg-white px-2.5 shadow-sm sm:w-[190px]">
+            <span className="h-12 w-12 shrink-0 overflow-hidden">
               <img
                 src="/green-charcoal-namibia-logo.png"
                 alt="Green Charcoal Namibia"
-                className="h-auto w-full"
+                className="h-12 w-auto max-w-none drop-shadow-[0_0_12px_rgba(46,179,85,0.22)]"
               />
             </span>
-            <span className="hidden sm:block">
+            <span>
               <span className="block text-lg font-black uppercase tracking-tight">
                 Factory Portal
               </span>
-              <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-[#9f9389]">
-                Plant operations
+              <span className="hidden text-[10px] font-black uppercase tracking-[0.16em] text-[#54b95f] sm:block">
+                Green Charcoal Namibia
               </span>
             </span>
           </button>
@@ -605,11 +605,11 @@ function FactoryPortalLogin({
             <div className="absolute bottom-16 right-10 h-80 w-80 rounded-full bg-[#34513d] blur-[130px]" />
           </div>
 
-          <div className="relative flex w-fit items-center border border-[#51443a] bg-white px-5 py-4 shadow-2xl">
+          <div className="relative w-fit">
             <img
               src="/green-charcoal-namibia-logo.png"
               alt="Green Charcoal Namibia"
-              className="h-auto w-72"
+              className="h-auto w-80 drop-shadow-[0_12px_28px_rgba(0,0,0,0.35)]"
             />
           </div>
 
@@ -651,11 +651,11 @@ function FactoryPortalLogin({
             onSubmit={submit}
             className="w-full max-w-lg border border-[#463b33] bg-[#1b1714] p-6 shadow-2xl sm:p-9"
           >
-            <div className="flex w-full max-w-[300px] items-center bg-white px-4 py-3 shadow-lg">
+            <div className="w-full max-w-[280px]">
               <img
                 src="/green-charcoal-namibia-logo.png"
                 alt="Green Charcoal Namibia"
-                className="h-auto w-full"
+                className="h-auto w-full drop-shadow-[0_10px_24px_rgba(0,0,0,0.4)]"
               />
             </div>
 
