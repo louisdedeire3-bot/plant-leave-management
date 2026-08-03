@@ -26,6 +26,9 @@ export interface ProductionProductSheet {
   lotNumberPosition: string;
   fscRequired: boolean;
   packing5M2Required: boolean;
+  bagConsumableCode: string | null;
+  slipSheetConsumableCode: string | null;
+  consumableWastePercent: number;
   consumablesConfigured: boolean;
   validation: string;
   status: ProductSheetStatus;
@@ -60,7 +63,10 @@ export const productionProductSheets: ProductionProductSheet[] = [
     lotNumberPosition: "Bottom of bag",
     fscRequired: true,
     packing5M2Required: false,
-    consumablesConfigured: false,
+    bagConsumableCode: "BAG-60251ALG228FSC",
+    slipSheetConsumableCode: null,
+    consumableWastePercent: 3,
+    consumablesConfigured: true,
     validation: "Management validated",
     status: "READY",
   },
