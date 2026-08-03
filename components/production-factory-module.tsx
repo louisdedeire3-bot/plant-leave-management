@@ -6,6 +6,7 @@
 
 import {
   ArrowRight,
+  BarChart3,
   Boxes,
   Check,
   ChevronRight,
@@ -45,6 +46,7 @@ import {
 type PortalRole = "employee" | "supervisor" | "manager";
 type ProductionSection =
   | "control"
+  | "performance"
   | "orders"
   | "product-sheets"
   | "consumables"
@@ -702,6 +704,7 @@ export function ProductionFactoryModule({
     label: string;
   }> = [
     { id: "control", label: "Control room" },
+    { id: "performance", label: "Performance" },
     { id: "orders", label: `Production orders${openCount ? ` (${openCount})` : ""}` },
     {
       id: "product-sheets",
@@ -772,6 +775,10 @@ export function ProductionFactoryModule({
         />
       )}
 
+      {section === "performance" && (
+        <ProductionPerformanceDashboard data={data} />
+      )}
+
       {section === "orders" && (
         <ProductionOrders
           profile={profile}
@@ -822,6 +829,467 @@ export function ProductionFactoryModule({
       {section === "raw-stock" && <RawMaterialStock data={data} />}
 
       {section === "finished-stock" && <FinishedProductStock data={data} />}
+    </div>
+  );
+}
+
+type PerformancePeriod = "TODAY" | "WEEK" | "MONTH";
+
+function ProductionPerformanceDashboard({
+  data,
+}: {
+  data: ProductionBootstrap;
+}) {
+  const [period, setPeriod] = useState<PerformancePeriod>("TODAY");
+  const [lineFilter, setLineFilter] = useState("ALL");
+  const [productFilter, setProductFilter] = useState("ALL");
+  const [shiftFilter, setShiftFilter] = useState<"ALL" | Shift>("ALL");
+
+  const today = isoDate(new Date());
+  const dateRange = useMemo(() => {
+    const current = new Date(`${today}T00:00:00`);
+    const start = new Date(current);
+
+    if (period === "WEEK") {
+      const day = current.getDay();
+      const daysSinceMonday = day === 0 ? 6 : day - 1;
+      start.setDate(current.getDate() - daysSinceMonday);
+    } else if (period === "MONTH") {
+      start.setDate(1);
+    }
+
+    return {
+      start: period === "TODAY" ? today : isoDate(start),
+      end: today,
+    };
+  }, [period, today]);
+
+  const filteredOrders = useMemo(
+    () =>
+      data.orders
+        .filter(
+          (order) =>
+            order.status !== "CANCELLED" &&
+            order.plannedDate >= dateRange.start &&
+            order.plannedDate <= dateRange.end,
+        )
+        .filter(
+          (order) =>
+            lineFilter === "ALL" || order.lineCode === lineFilter,
+        )
+        .filter(
+          (order) =>
+            productFilter === "ALL" || order.productCode === productFilter,
+        )
+        .filter(
+          (order) => shiftFilter === "ALL" || order.shift === shiftFilter,
+        )
+        .sort((a, b) =>
+          `${b.plannedDate}-${b.shift}-${b.lineCode}`.localeCompare(
+            `${a.plannedDate}-${a.shift}-${a.lineCode}`,
+          ),
+        ),
+    [data.orders, dateRange, lineFilter, productFilter, shiftFilter],
+  );
+
+  const targetBags = filteredOrders.reduce(
+    (sum, order) => sum + Number(order.targetBags || 0),
+    0,
+  );
+  const actualBags = filteredOrders.reduce(
+    (sum, order) => sum + Number(order.actualBags || 0),
+    0,
+  );
+  const packedWeightKg = filteredOrders.reduce(
+    (sum, order) =>
+      sum + Number(order.actualBags || 0) * Number(order.bagWeightKg || 0),
+    0,
+  );
+  const downtimeMinutes = filteredOrders.reduce(
+    (sum, order) => sum + Number(order.totalDowntimeMinutes || 0),
+    0,
+  );
+  const breakdownCount = filteredOrders.reduce(
+    (sum, order) => sum + (order.breakdowns?.length ?? 0),
+    0,
+  );
+  const achievement = targetBags > 0 ? (actualBags / targetBags) * 100 : 0;
+  const validatedOrders = filteredOrders.filter(
+    (order) => order.status === "VALIDATED",
+  ).length;
+
+  const lineResults = useMemo(() => {
+    const rows = new Map<
+      string,
+      {
+        lineCode: string;
+        lineName: string;
+        orders: number;
+        targetBags: number;
+        actualBags: number;
+        packedWeightKg: number;
+        downtimeMinutes: number;
+      }
+    >();
+
+    filteredOrders.forEach((order) => {
+      const current = rows.get(order.lineCode) ?? {
+        lineCode: order.lineCode,
+        lineName: order.lineName,
+        orders: 0,
+        targetBags: 0,
+        actualBags: 0,
+        packedWeightKg: 0,
+        downtimeMinutes: 0,
+      };
+      current.orders += 1;
+      current.targetBags += Number(order.targetBags || 0);
+      current.actualBags += Number(order.actualBags || 0);
+      current.packedWeightKg +=
+        Number(order.actualBags || 0) * Number(order.bagWeightKg || 0);
+      current.downtimeMinutes += Number(order.totalDowntimeMinutes || 0);
+      rows.set(order.lineCode, current);
+    });
+
+    return Array.from(rows.values()).sort((a, b) =>
+      a.lineName.localeCompare(b.lineName),
+    );
+  }, [filteredOrders]);
+
+  const periodLabel =
+    dateRange.start === dateRange.end
+      ? formatDate(dateRange.start)
+      : `${formatDate(dateRange.start)} – ${formatDate(dateRange.end)}`;
+  const formatPercent = (value: number) =>
+    `${Number(value || 0).toLocaleString("en-NA", {
+      maximumFractionDigits: 1,
+    })}%`;
+  const formatTons = (weightKg: number) =>
+    `${(Number(weightKg || 0) / 1000).toLocaleString("en-NA", {
+      maximumFractionDigits: 2,
+    })} t`;
+  const formatDowntime = (minutes: number) => {
+    const safeMinutes = Math.max(0, Math.round(Number(minutes || 0)));
+    const hours = Math.floor(safeMinutes / 60);
+    const remaining = safeMinutes % 60;
+    if (hours === 0) return `${remaining} min`;
+    return `${hours}h ${String(remaining).padStart(2, "0")}`;
+  };
+
+  return (
+    <div className="space-y-6">
+      <section className="overflow-hidden border border-[#2f2823] bg-[#171310] text-white">
+        <div className="flex flex-wrap items-end justify-between gap-6 p-6 lg:p-8">
+          <div>
+            <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-[#d78a46]">
+              Management performance board
+            </p>
+            <h1 className="mt-2 text-4xl font-black uppercase tracking-tight sm:text-5xl">
+              Production Performance
+            </h1>
+            <p className="mt-3 text-sm font-semibold text-[#a89c92]">
+              {periodLabel} · Cancelled orders excluded · No extra Supervisor input
+            </p>
+          </div>
+          <BarChart3 size={52} className="text-[#d78a46]" />
+        </div>
+      </section>
+
+      <section className="border border-[#cfc4b7] bg-white p-4">
+        <div className="grid gap-4 xl:grid-cols-[auto_1fr_1fr_180px] xl:items-end">
+          <div>
+            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+              Period
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  ["TODAY", "Today"],
+                  ["WEEK", "This week"],
+                  ["MONTH", "This month"],
+                ] as Array<[PerformancePeriod, string]>
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setPeriod(value)}
+                  className={`h-12 px-4 text-xs font-black uppercase ${
+                    period === value
+                      ? "bg-[#171310] text-white"
+                      : "border border-[#cfc4b7] bg-[#f6f2ed] text-[#5f5147]"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <Field label="Production line">
+            <select
+              value={lineFilter}
+              onChange={(event) => setLineFilter(event.target.value)}
+              className={inputClass}
+            >
+              <option value="ALL">All lines</option>
+              {data.lines.map((line) => (
+                <option key={line.code} value={line.code}>
+                  {line.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Product">
+            <select
+              value={productFilter}
+              onChange={(event) => setProductFilter(event.target.value)}
+              className={inputClass}
+            >
+              <option value="ALL">All products</option>
+              {data.products.map((product) => (
+                <option key={product.code} value={product.code}>
+                  {product.code} — {product.description}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Shift">
+            <select
+              value={shiftFilter}
+              onChange={(event) =>
+                setShiftFilter(event.target.value as "ALL" | Shift)
+              }
+              className={inputClass}
+            >
+              <option value="ALL">All shifts</option>
+              <option value="DAY">Day</option>
+              <option value="NIGHT">Night</option>
+            </select>
+          </Field>
+        </div>
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <PerformanceKpi
+          label="Target"
+          value={formatNumber(targetBags)}
+          detail={`${filteredOrders.length} Production Order(s)`}
+        />
+        <PerformanceKpi
+          label="Actual"
+          value={formatNumber(actualBags)}
+          detail={`${validatedOrders}/${filteredOrders.length} validated`}
+        />
+        <PerformanceKpi
+          label="Achievement"
+          value={formatPercent(achievement)}
+          detail={`${actualBags - targetBags >= 0 ? "+" : ""}${formatNumber(actualBags - targetBags)} bags`}
+          tone={targetBags > 0 && achievement >= 100 ? "good" : "alert"}
+        />
+        <PerformanceKpi
+          label="Packed weight"
+          value={formatTons(packedWeightKg)}
+          detail="Good bags × product weight"
+        />
+        <PerformanceKpi
+          label="Stopped time"
+          value={formatDowntime(downtimeMinutes)}
+          detail={`${breakdownCount} breakdown(s) recorded`}
+          tone={downtimeMinutes > 0 ? "alert" : "neutral"}
+        />
+      </section>
+
+      {filteredOrders.length === 0 ? (
+        <section className="border border-[#cfc4b7] bg-white">
+          <EmptyState
+            icon={BarChart3}
+            title="No Production Orders for this selection"
+            text="Change the period or filters. Performance appears automatically from existing Production Orders."
+          />
+        </section>
+      ) : (
+        <>
+          <section className="border border-[#cfc4b7] bg-white">
+            <div className="border-b border-[#d8cec3] bg-[#f4efe9] px-5 py-4">
+              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#b86c2c]">
+                Line comparison
+              </p>
+              <h2 className="mt-1 text-2xl font-black uppercase">
+                Target achievement by line
+              </h2>
+            </div>
+            <div className="grid gap-3 p-5 lg:grid-cols-2">
+              {lineResults.map((line) => {
+                const lineAchievement =
+                  line.targetBags > 0
+                    ? (line.actualBags / line.targetBags) * 100
+                    : 0;
+                const reached = line.targetBags > 0 && lineAchievement >= 100;
+
+                return (
+                  <article
+                    key={line.lineCode}
+                    className={`border p-5 ${
+                      reached
+                        ? "border-emerald-300 bg-emerald-50"
+                        : "border-red-300 bg-red-50"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="font-mono text-xs font-black text-[#b86c2c]">
+                          {line.lineCode}
+                        </p>
+                        <h3 className="mt-1 text-lg font-black uppercase">
+                          {line.lineName}
+                        </h3>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          {line.orders} order(s) · {formatTons(line.packedWeightKg)} · {formatDowntime(line.downtimeMinutes)} stopped
+                        </p>
+                      </div>
+                      <p
+                        className={`font-mono text-3xl font-black ${
+                          reached ? "text-emerald-700" : "text-red-700"
+                        }`}
+                      >
+                        {formatPercent(lineAchievement)}
+                      </p>
+                    </div>
+                    <div className="mt-5 h-3 overflow-hidden bg-white">
+                      <div
+                        className={reached ? "h-full bg-emerald-600" : "h-full bg-red-600"}
+                        style={{ width: `${Math.min(Math.max(lineAchievement, 0), 100)}%` }}
+                      />
+                    </div>
+                    <div className="mt-3 flex justify-between gap-3 font-mono text-xs font-black">
+                      <span>{formatNumber(line.actualBags)} actual</span>
+                      <span>{formatNumber(line.targetBags)} target</span>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="border border-[#cfc4b7] bg-white">
+            <div className="border-b border-[#d8cec3] bg-[#f4efe9] px-5 py-4">
+              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#b86c2c]">
+                Production Order detail
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-[#201a16] text-white">
+                  <tr className="text-left text-[10px] font-black uppercase tracking-[0.08em]">
+                    <th className="px-4 py-4">Date / shift</th>
+                    <th className="px-4 py-4">Line / product</th>
+                    <th className="px-4 py-4">Status</th>
+                    <th className="px-4 py-4 text-right">Target</th>
+                    <th className="px-4 py-4 text-right">Actual</th>
+                    <th className="px-4 py-4 text-right">Achievement</th>
+                    <th className="px-4 py-4 text-right">Tonnes</th>
+                    <th className="px-4 py-4 text-right">Stopped</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredOrders.map((order) => {
+                    const orderAchievement =
+                      order.targetBags > 0
+                        ? (order.actualBags / order.targetBags) * 100
+                        : 0;
+                    const reached =
+                      order.targetBags > 0 && orderAchievement >= 100;
+
+                    return (
+                      <tr key={order.id} className="border-b border-[#e4dcd3]">
+                        <td className="whitespace-nowrap px-4 py-4">
+                          <p className="font-black">{formatDate(order.plannedDate)}</p>
+                          <p className="mt-1 text-xs font-bold text-slate-500">
+                            {order.shift}
+                          </p>
+                        </td>
+                        <td className="px-4 py-4">
+                          <p className="font-black">{order.lineName}</p>
+                          <p className="mt-1 font-mono text-xs text-[#b86c2c]">
+                            {order.productCode}
+                          </p>
+                        </td>
+                        <td className="px-4 py-4">
+                          <StatusBadge status={order.status} />
+                        </td>
+                        <td className="px-4 py-4 text-right font-mono font-black">
+                          {formatNumber(order.targetBags)}
+                        </td>
+                        <td className="px-4 py-4 text-right font-mono font-black">
+                          {formatNumber(order.actualBags)}
+                        </td>
+                        <td
+                          className={`px-4 py-4 text-right font-mono font-black ${
+                            reached ? "text-emerald-700" : "text-red-700"
+                          }`}
+                        >
+                          {formatPercent(orderAchievement)}
+                        </td>
+                        <td className="px-4 py-4 text-right font-mono font-black">
+                          {formatTons(
+                            Number(order.actualBags || 0) *
+                              Number(order.bagWeightKg || 0),
+                          )}
+                        </td>
+                        <td className="px-4 py-4 text-right font-mono font-black">
+                          {formatDowntime(order.totalDowntimeMinutes)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
+
+function PerformanceKpi({
+  label,
+  value,
+  detail,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone?: "neutral" | "good" | "alert";
+}) {
+  return (
+    <div
+      className={`border p-5 ${
+        tone === "good"
+          ? "border-emerald-300 bg-emerald-50"
+          : tone === "alert"
+            ? "border-red-300 bg-red-50"
+            : "border-[#cfc4b7] bg-white"
+      }`}
+    >
+      <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[#76695f]">
+        {label}
+      </p>
+      <p
+        className={`mt-4 font-mono text-2xl font-black ${
+          tone === "good"
+            ? "text-emerald-800"
+            : tone === "alert"
+              ? "text-red-800"
+              : "text-[#171310]"
+        }`}
+      >
+        {value}
+      </p>
+      <p className="mt-2 text-xs font-semibold text-slate-500">{detail}</p>
     </div>
   );
 }
