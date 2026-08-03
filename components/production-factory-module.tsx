@@ -34,11 +34,18 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
+import {
+  getProductionProductSheet,
+  lineNumberFromCodeOrLabel,
+  productionProductSheets,
+  type ProductionProductSheet,
+} from "@/lib/production-product-sheets";
 
 type PortalRole = "employee" | "supervisor" | "manager";
 type ProductionSection =
   | "control"
   | "orders"
+  | "product-sheets"
   | "run"
   | "history"
   | "raw-stock"
@@ -324,6 +331,15 @@ function isLineCompatible(
   line: ProductionLine,
   product: ProductionProduct,
 ): boolean {
+  const productSheet = getProductionProductSheet(product.code);
+  if (productSheet) {
+    const lineNumber = lineNumberFromCodeOrLabel(line.code, line.label);
+    return (
+      lineNumber !== null &&
+      productSheet.compatibleLineNumbers.includes(lineNumber)
+    );
+  }
+
   const weightOkay =
     product.bagWeightKg >= line.minBagWeightKg &&
     product.bagWeightKg <= line.maxBagWeightKg;
@@ -581,6 +597,10 @@ export function ProductionFactoryModule({
   }> = [
     { id: "control", label: "Control room" },
     { id: "orders", label: `Production orders${openCount ? ` (${openCount})` : ""}` },
+    {
+      id: "product-sheets",
+      label: `Product sheets (${productionProductSheets.length} ready)`,
+    },
     { id: "run", label: "Production run" },
     { id: "history", label: `Production history${pendingCount ? ` (${pendingCount})` : ""}` },
     { id: "raw-stock", label: "Raw material lots" },
@@ -654,6 +674,10 @@ export function ProductionFactoryModule({
           onCancel={cancelOrder}
           onOpenRun={openRun}
         />
+      )}
+
+      {section === "product-sheets" && (
+        <ProductionProductSheets products={data.products} />
       )}
 
       {section === "run" && (
@@ -973,6 +997,336 @@ function ProductionControlRoom({
   );
 }
 
+function YesNoBadge({ value }: { value: boolean }) {
+  return (
+    <span
+      className={`inline-flex border px-2 py-1 text-[10px] font-black uppercase ${
+        value
+          ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+          : "border-slate-300 bg-slate-100 text-slate-600"
+      }`}
+    >
+      {value ? "Yes" : "No"}
+    </span>
+  );
+}
+
+function ProductSheetOperationalCard({
+  productCode,
+  compact = false,
+}: {
+  productCode: string;
+  compact?: boolean;
+}) {
+  const sheet = getProductionProductSheet(productCode);
+
+  if (!sheet) {
+    return (
+      <div className="border border-amber-300 bg-amber-50 p-4 text-amber-950">
+        <div className="flex items-start gap-3">
+          <CircleAlert size={20} className="mt-0.5 shrink-0 text-amber-700" />
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.12em]">
+              Product sheet incomplete
+            </p>
+            <p className="mt-1 text-sm font-semibold leading-6">
+              This product remains selectable. Global line defaults apply and no
+              consumables will be deducted automatically until its sheet and BOM
+              are completed.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border border-emerald-300 bg-emerald-50">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-emerald-200 px-4 py-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-800">
+            Active product sheet · {sheet.validation}
+          </p>
+          <p className="mt-1 font-mono text-sm font-black text-emerald-950">
+            {sheet.productCode}
+          </p>
+        </div>
+        <span className="bg-emerald-700 px-2.5 py-1 text-[10px] font-black uppercase text-white">
+          Ready
+        </span>
+      </div>
+
+      <div
+        className={`grid gap-3 p-4 ${
+          compact ? "sm:grid-cols-3" : "sm:grid-cols-2 xl:grid-cols-4"
+        }`}
+      >
+        <SummaryCell
+          label="Palletization"
+          value={`${sheet.bagsPerLayer} bags × ${sheet.layersPerPallet} layers = ${sheet.bagsPerPallet}`}
+          dark={false}
+        />
+        <SummaryCell
+          label="Pallet"
+          value={`${sheet.palletType} ${sheet.palletLengthMm} × ${sheet.palletWidthMm} mm · max ${sheet.maxPalletHeightMm} mm`}
+          dark={false}
+        />
+        <SummaryCell
+          label="Container"
+          value={`${formatNumber(sheet.palletsPerContainer)} pallets · ${formatNumber(sheet.bagsPerContainer)} bags`}
+          dark={false}
+        />
+        {!compact && (
+          <SummaryCell
+            label="Target net / pallet"
+            value={formatKg(sheet.targetNetWeightKg)}
+            dark={false}
+          />
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-emerald-200 px-4 py-3 text-xs font-bold text-emerald-950">
+        <span>
+          Effective line override: {sheet.compatibleLineNumbers.map((line) => `Line ${line}`).join(", ")}
+        </span>
+        <span>
+          Lot number: {sheet.lotNumberPosition} · FSC {sheet.fscRequired ? "required" : "not required"}
+        </span>
+      </div>
+
+      {!sheet.consumablesConfigured && (
+        <div className="border-t border-amber-300 bg-amber-50 px-4 py-3 text-xs font-black uppercase text-amber-900">
+          Consumables not configured — no automatic stock deduction yet
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProductionProductSheets({
+  products,
+}: {
+  products: ProductionProduct[];
+}) {
+  const readyCode = productionProductSheets[0]?.productCode ?? "";
+  const [selectedCode, setSelectedCode] = useState(readyCode);
+  const [search, setSearch] = useState("");
+
+  const productOptions = useMemo(() => {
+    const existing = new Map(
+      products.map((product) => [product.code.toUpperCase(), product]),
+    );
+    for (const sheet of productionProductSheets) {
+      if (!existing.has(sheet.productCode.toUpperCase())) {
+        existing.set(sheet.productCode.toUpperCase(), {
+          code: sheet.productCode,
+          description: sheet.description,
+          bagWeightKg: sheet.bagWeightKg,
+          rawMaterialType: "STANDARD",
+          active: true,
+        });
+      }
+    }
+    return [...existing.values()].sort((a, b) => {
+      const aReady = getProductionProductSheet(a.code) ? 0 : 1;
+      const bReady = getProductionProductSheet(b.code) ? 0 : 1;
+      return aReady - bReady || a.code.localeCompare(b.code);
+    });
+  }, [products]);
+
+  const filteredProducts = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return productOptions;
+    return productOptions.filter((product) =>
+      `${product.code} ${product.description}`.toLowerCase().includes(query),
+    );
+  }, [productOptions, search]);
+
+  const selectedProduct =
+    productOptions.find((product) => product.code === selectedCode) ??
+    productOptions[0] ??
+    null;
+  const selectedSheet = getProductionProductSheet(selectedProduct?.code);
+  const incompleteCount = productOptions.filter(
+    (product) => !getProductionProductSheet(product.code),
+  ).length;
+
+  return (
+    <div className="space-y-6">
+      <section className="border border-[#2f2823] bg-[#171310] p-6 text-white">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-[#d78a46]">
+              Supervisor reference
+            </p>
+            <h1 className="mt-2 text-4xl font-black uppercase tracking-tight">
+              Product Sheets
+            </h1>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-[#a89c92]">
+              Palletization, line overrides, markings and special requirements
+              for every finished product.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <span className="bg-emerald-600 px-3 py-2 text-xs font-black uppercase">
+              {productionProductSheets.length} ready
+            </span>
+            <span className="border border-amber-500 px-3 py-2 text-xs font-black uppercase text-amber-300">
+              {incompleteCount} incomplete
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
+        <section className="border border-[#cfc4b7] bg-white">
+          <div className="border-b border-[#d8cec3] bg-[#f4efe9] p-4">
+            <Field label="Search product">
+              <div className="relative">
+                <Search
+                  size={17}
+                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Code or description"
+                  className={`${inputClass} pl-11`}
+                />
+              </div>
+            </Field>
+          </div>
+          <div className="max-h-[650px] divide-y divide-[#e1d8cf] overflow-y-auto">
+            {filteredProducts.map((product) => {
+              const ready = Boolean(getProductionProductSheet(product.code));
+              return (
+                <button
+                  key={product.code}
+                  type="button"
+                  onClick={() => setSelectedCode(product.code)}
+                  className={`w-full p-4 text-left transition ${
+                    selectedProduct?.code === product.code
+                      ? "bg-[#201a16] text-white"
+                      : "bg-white hover:bg-[#faf8f5]"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-mono text-xs font-black">{product.code}</p>
+                      <p className={`mt-1 text-xs font-semibold leading-5 ${
+                        selectedProduct?.code === product.code
+                          ? "text-[#c8beb5]"
+                          : "text-slate-500"
+                      }`}>
+                        {product.description}
+                      </p>
+                    </div>
+                    <span className={`shrink-0 px-2 py-1 text-[9px] font-black uppercase ${
+                      ready
+                        ? "bg-emerald-600 text-white"
+                        : "bg-amber-100 text-amber-900"
+                    }`}>
+                      {ready ? "Ready" : "Incomplete"}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="space-y-5">
+          {selectedProduct && (
+            <>
+              <div className="border border-[#cfc4b7] bg-white p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-mono text-sm font-black text-[#b86c2c]">
+                      {selectedProduct.code}
+                    </p>
+                    <h2 className="mt-2 text-2xl font-black uppercase text-[#171310]">
+                      {selectedProduct.description}
+                    </h2>
+                  </div>
+                  <span className={`px-3 py-2 text-xs font-black uppercase ${
+                    selectedSheet
+                      ? "bg-emerald-700 text-white"
+                      : "bg-amber-100 text-amber-900"
+                  }`}>
+                    {selectedSheet ? "Management validated" : "To complete"}
+                  </span>
+                </div>
+              </div>
+
+              <ProductSheetOperationalCard productCode={selectedProduct.code} />
+
+              {selectedSheet && <ProductSheetFullDetails sheet={selectedSheet} />}
+            </>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function ProductSheetFullDetails({ sheet }: { sheet: ProductionProductSheet }) {
+  const requirements = [
+    ["Sleeve", sheet.sleeveRequired],
+    ["Slip sheet", sheet.slipSheetRequired],
+    ["Stretch film", sheet.stretchFilmRequired],
+    ["Strapping", sheet.strappingRequired],
+    ["Corner protectors", sheet.cornerProtectorsRequired],
+    ["FSC", sheet.fscRequired],
+    ["5M2", sheet.packing5M2Required],
+  ] as const;
+
+  return (
+    <div className="grid gap-5 lg:grid-cols-2">
+      <section className="border border-[#cfc4b7] bg-white p-5">
+        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#b86c2c]">
+          Product and packaging
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <DetailCell label="Customer / brand" value={sheet.customerBrand} />
+          <DetailCell label="Product family" value={sheet.productFamily} />
+          <DetailCell label="Bag weight" value={formatKg(sheet.bagWeightKg)} />
+          <DetailCell label="Bag material" value={sheet.bagMaterial} />
+          <DetailCell label="Lot number position" value={sheet.lotNumberPosition} />
+          <DetailCell label="Target net / pallet" value={formatKg(sheet.targetNetWeightKg)} />
+        </div>
+      </section>
+
+      <section className="border border-[#cfc4b7] bg-white p-5">
+        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#b86c2c]">
+          Finishing and certifications
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {requirements.map(([label, value]) => (
+            <div
+              key={label}
+              className="flex min-h-12 items-center justify-between gap-3 border border-[#e1d8cf] bg-[#faf8f5] px-3"
+            >
+              <span className="text-xs font-bold text-slate-600">{label}</span>
+              <YesNoBadge value={value} />
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function DetailCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border border-[#e1d8cf] bg-[#faf8f5] p-3">
+      <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">
+        {label}
+      </p>
+      <p className="mt-2 text-sm font-black text-[#171310]">{value}</p>
+    </div>
+  );
+}
+
 function ProductionOrders({
   profile,
   data,
@@ -1163,17 +1517,25 @@ function ProductionOrders({
             </div>
 
             {selectedProduct && (
-              <div className="xl:col-span-4 grid gap-3 border border-[#3a3029] bg-[#201a16] p-4 text-white sm:grid-cols-3">
-                <SummaryCell label="Description" value={selectedProduct.description} />
-                <SummaryCell
-                  label="Bag weight"
-                  value={`${selectedProduct.bagWeightKg} kg`}
-                />
-                <SummaryCell
-                  label="Raw material"
-                  value={selectedProduct.rawMaterialType}
-                />
-              </div>
+              <>
+                <div className="xl:col-span-4 grid gap-3 border border-[#3a3029] bg-[#201a16] p-4 text-white sm:grid-cols-3">
+                  <SummaryCell label="Description" value={selectedProduct.description} />
+                  <SummaryCell
+                    label="Bag weight"
+                    value={`${selectedProduct.bagWeightKg} kg`}
+                  />
+                  <SummaryCell
+                    label="Raw material"
+                    value={selectedProduct.rawMaterialType}
+                  />
+                </div>
+                <div className="xl:col-span-4">
+                  <ProductSheetOperationalCard
+                    productCode={selectedProduct.code}
+                    compact
+                  />
+                </div>
+              </>
             )}
 
             <Field label="Target number of bags">
@@ -1722,6 +2084,14 @@ function ProductionRunForm({
             <SummaryCell label="Target" value={`${formatNumber(selectedOrder.targetBags)} bags`} />
             <SummaryCell label="Line" value={selectedOrder.lineName} />
             <SummaryCell label="Finished lot" value={selectedOrder.finishedErpLotNumber} />
+          </div>
+        )}
+
+        {selectedOrder && (
+          <div className="border-t border-[#d8cec3] p-5">
+            <ProductSheetOperationalCard
+              productCode={selectedOrder.productCode}
+            />
           </div>
         )}
 
@@ -2939,13 +3309,37 @@ function RawTypeBadge({ type }: { type: RawMaterialType }) {
   );
 }
 
-function SummaryCell({ label, value }: { label: string; value: string }) {
+function SummaryCell({
+  label,
+  value,
+  dark = true,
+}: {
+  label: string;
+  value: string;
+  dark?: boolean;
+}) {
   return (
-    <div className="border border-[#43382f] bg-[#171310] p-3">
-      <p className="text-[10px] font-black uppercase tracking-[0.1em] text-[#81766d]">
+    <div
+      className={`border p-3 ${
+        dark
+          ? "border-[#43382f] bg-[#171310]"
+          : "border-emerald-200 bg-white/70"
+      }`}
+    >
+      <p
+        className={`text-[10px] font-black uppercase tracking-[0.1em] ${
+          dark ? "text-[#81766d]" : "text-emerald-700"
+        }`}
+      >
         {label}
       </p>
-      <p className="mt-2 text-sm font-black text-[#e0d7cf]">{value}</p>
+      <p
+        className={`mt-2 text-sm font-black ${
+          dark ? "text-[#e0d7cf]" : "text-emerald-950"
+        }`}
+      >
+        {value}
+      </p>
     </div>
   );
 }
