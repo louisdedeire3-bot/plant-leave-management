@@ -3149,9 +3149,6 @@ function ProductionConsumableStock({
   const [selectedItemId, setSelectedItemId] = useState("");
   const [quantityDelta, setQuantityDelta] = useState("");
   const [comment, setComment] = useState("");
-  const [reorderQuantities, setReorderQuantities] = useState<
-    Record<string, string>
-  >({});
 
   useEffect(() => {
     if (
@@ -3191,29 +3188,17 @@ function ProductionConsumableStock({
   }
 
   function prepareSlipSheetOrderEmail(item: ProductionConsumable) {
-    const quantity = Number(reorderQuantities[item.id]);
-    if (
-      !Number.isInteger(quantity) ||
-      quantity <= 0 ||
-      !item.supplierEmail
-    ) {
-      return;
-    }
+    if (!item.supplierEmail) return;
 
-    const subject = "Slip sheet order - Green Charcoal Namibia";
+    const subject = "Quote request - WPC111882";
     const body = [
-      `Dear ${item.supplierName || "Supplier"} team,`,
+      "Good day Marilize,",
       "",
-      "Our slip sheet stock has reached the reorder threshold.",
+      "Could you send us a quote for 1000 slipsheets WPC111882?",
       "",
-      `Current stock: ${formatNumber(item.currentStock)} units`,
-      `Minimum stock level: ${formatNumber(item.minimumStock ?? 250)} units`,
-      `Requested order quantity: ${formatNumber(quantity)} units`,
-      "",
-      "Please confirm availability and the expected delivery date.",
+      "Thank you.",
       "",
       "Kind regards,",
-      "Green Charcoal Namibia",
     ].join("\n");
     const cc = (item.supplierCcEmails ?? []).filter(Boolean).join(",");
     const query = [
@@ -3266,12 +3251,6 @@ function ProductionConsumableStock({
       </section>
 
       {lowSlipSheetItems.map((item) => {
-        const reorderQuantity = Number(reorderQuantities[item.id]);
-        const canPrepareEmail =
-          Number.isInteger(reorderQuantity) &&
-          reorderQuantity > 0 &&
-          Boolean(item.supplierEmail);
-
         return (
           <section
             key={`low-stock-${item.id}`}
@@ -3307,35 +3286,20 @@ function ProductionConsumableStock({
             </div>
 
             {profile.role === "manager" ? (
-              <div className="grid gap-4 p-5 lg:grid-cols-[260px_auto] lg:items-end">
-                <Field label="Quantity to order">
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={reorderQuantities[item.id] ?? ""}
-                    onChange={(event) =>
-                      setReorderQuantities((current) => ({
-                        ...current,
-                        [item.id]: event.target.value,
-                      }))
-                    }
-                    placeholder="e.g. 1000"
-                    className={inputClass}
-                  />
-                </Field>
+              <div className="flex flex-wrap items-center gap-4 p-5">
                 <button
                   type="button"
-                  disabled={!canPrepareEmail}
+                  disabled={!item.supplierEmail}
                   onClick={() => prepareSlipSheetOrderEmail(item)}
-                  className="inline-flex h-12 items-center justify-center gap-2 bg-red-700 px-5 text-xs font-black uppercase text-white disabled:opacity-40 lg:w-fit"
+                  className="inline-flex h-12 items-center justify-center gap-2 bg-red-700 px-5 text-xs font-black uppercase text-white disabled:opacity-40"
                 >
                   <Mail size={17} />
-                  Prepare order email
+                  Prepare quote email
                 </button>
-                <p className="text-xs font-semibold text-slate-600 lg:col-span-2">
-                  The email opens pre-filled in your mail application. Management
-                  reviews it and sends it manually.
+                <p className="text-xs font-semibold text-slate-600">
+                  Quote request: 1000 slipsheets WPC111882. The email opens
+                  pre-filled in your mail application. Management reviews it
+                  and sends it manually.
                 </p>
               </div>
             ) : (
