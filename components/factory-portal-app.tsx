@@ -33,6 +33,10 @@ import {
   ProductionFactoryModule,
   type ProductionFactoryProfile,
 } from "@/components/production-factory-module";
+import {
+  BriquettesFactoryModule,
+  type BriquettesFactoryProfile,
+} from "@/components/briquettes-factory-module";
 
 type PortalRole = "employee" | "supervisor" | "manager";
 type FactoryModuleId =
@@ -120,9 +124,9 @@ const modules: FactoryModuleDefinition[] = [
   {
     id: "briquettes",
     label: "Briquettes",
-    description: "Briquette production, shifts and raw materials",
+    description: "Cages, fines lots, drying yard, collections and ERP lots",
     icon: Boxes,
-    state: "PLANNED",
+    state: "LIVE",
   },
   {
     id: "laboratory",
@@ -563,7 +567,14 @@ export function FactoryPortalApp() {
             />
           )}
 
-          {!["dashboard", "leave", "screening", "production"].includes(activeModule) && (
+          {activeModule === "briquettes" && (
+            <BriquettesFactoryModule
+              profile={profile as BriquettesFactoryProfile}
+              sessionToken={sessionToken}
+            />
+          )}
+
+          {!["dashboard", "leave", "screening", "production", "briquettes"].includes(activeModule) && (
             <PlannedModule
               module={
                 modules.find((module) => module.id === activeModule) ??
@@ -762,7 +773,7 @@ function FactoryDashboard({
       <section className="grid gap-3 sm:grid-cols-3">
         {[
           ["Live modules", liveCount],
-          ["Next module", "Production"],
+          ["Next module", "Laboratory"],
           ["Management access", "All departments"],
         ].map(([label, value]) => (
           <div key={label} className="border border-[#cfc4b7] bg-white p-5">
