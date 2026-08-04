@@ -166,6 +166,7 @@ interface CollectionRow {
   notes: string;
   createdAt: string;
   recordedBy: string;
+  employees: ProductionEmployeeRow[];
   bigBags: CollectionBagRow[];
   totalWeightKg: number;
 }
@@ -579,6 +580,7 @@ export function BriquettesFactoryModule({
       {section === "collection" && (
         <CollectionForm
           sheets={data.sheets}
+          employees={data.employees}
           collections={data.collections}
           initialSheetNumber={selectedSheetNumber}
           sessionToken={sessionToken}
@@ -1214,6 +1216,7 @@ function FormulaMetric({ label, value, formula }: { label: string; value: string
 
 function CollectionForm({
   sheets,
+  employees,
   collections,
   initialSheetNumber,
   sessionToken,
@@ -1224,6 +1227,7 @@ function CollectionForm({
   onSaved,
 }: {
   sheets: BlackSheetRow[];
+  employees: EmployeeOption[];
   collections: CollectionRow[];
   initialSheetNumber: number;
   sessionToken: string;
@@ -1244,6 +1248,8 @@ function CollectionForm({
   const [collectionDate, setCollectionDate] = useState(localDate());
   const [weights, setWeights] = useState<string[]>([""]);
   const [isComplete, setIsComplete] = useState(false);
+  const [employeeIds, setEmployeeIds] = useState<string[]>([]);
+  const [employeeSearch, setEmployeeSearch] = useState("");
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
@@ -1256,6 +1262,13 @@ function CollectionForm({
   const currentTotal = weights.reduce((total, weight) => total + numberValue(weight), 0);
   const cumulativeWeight = numberValue(selectedSheet?.collectedWeightKg) + currentTotal;
   const cumulativeBags = numberValue(selectedSheet?.collectedBigBags) + weights.filter((weight) => numberValue(weight) > 0).length;
+  const filteredEmployees = employees.filter((employee) => {
+    const search = employeeSearch.trim().toLowerCase();
+    if (!search) return true;
+    return `${employee.employeeCode} ${employee.employeeName} ${employee.department} ${employee.position}`
+      .toLowerCase()
+      .includes(search);
+  });
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1267,6 +1280,11 @@ function CollectionForm({
     const parsedWeights = weights.map(numberValue);
     if (parsedWeights.some((weight) => weight <= 0)) {
       setError("Enter a positive weight for every big bag.");
+      return;
+    }
+
+    if (employeeIds.length === 0) {
+      setError("Select at least one employee for the collection team.");
       return;
     }
 
@@ -1285,6 +1303,7 @@ function CollectionForm({
           p_collection_date: collectionDate,
           p_big_bag_weights: parsedWeights,
           p_is_complete: isComplete,
+          p_employee_ids: employeeIds,
           p_notes: notes,
         },
       );
@@ -1366,6 +1385,62 @@ function CollectionForm({
               <FormulaMetric label="Sheet theoretical" value={formatKg(selectedSheet?.theoreticalDryWeightKg ?? numberValue(selectedSheet?.totalCages) * 350)} formula="Final comparison when complete" />
             </div>
 
+            <div className="mt-5 border border-[#ded5ca] bg-white p-4">
+              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+                <div>
+                  <p className="text-xs font-black uppercase">Collection employees</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Select the employees who collected and filled these big bags.
+                  </p>
+                </div>
+                <p className="text-xs font-black text-[#b86c2c]">
+                  {employeeIds.length} selected
+                </p>
+              </div>
+              <input
+                value={employeeSearch}
+                onChange={(event) => setEmployeeSearch(event.target.value)}
+                placeholder="Search collection employee"
+                className="field-control mt-4"
+              />
+              <div className="mt-3 grid max-h-72 gap-2 overflow-y-auto border border-[#ded5ca] p-3 md:grid-cols-2 xl:grid-cols-3">
+                {filteredEmployees.map((employee) => {
+                  const selected = employeeIds.includes(employee.id);
+                  return (
+                    <label
+                      key={employee.id}
+                      className={`flex cursor-pointer items-start gap-3 border p-3 ${
+                        selected
+                          ? "border-[#d78a46] bg-[#fff8f0]"
+                          : "border-transparent bg-[#faf8f5]"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() =>
+                          setEmployeeIds((current) =>
+                            selected
+                              ? current.filter((id) => id !== employee.id)
+                              : [...current, employee.id],
+                          )
+                        }
+                        className="mt-1 h-4 w-4"
+                      />
+                      <span>
+                        <span className="block text-sm font-black">
+                          {employee.employeeName}
+                        </span>
+                        <span className="mt-1 block text-[9px] font-bold uppercase text-slate-500">
+                          {employee.employeeCode} · {employee.department}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="mt-5 grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
               <Field label="Collection notes (optional)">
                 <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} className="field-control resize-y" />
@@ -1392,7 +1467,7 @@ function CollectionForm({
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full text-left text-sm">
             <thead className="bg-[#201a16] text-[10px] font-black uppercase text-[#d78a46]">
-              <tr><th className="px-4 py-3">Date</th><th className="px-4 py-3">Sheet</th><th className="px-4 py-3">ERP lot</th><th className="px-4 py-3">Big bags</th><th className="px-4 py-3">Weight</th><th className="px-4 py-3">Status</th></tr>
+              <tr><th className="px-4 py-3">Date</th><th className="px-4 py-3">Sheet</th><th className="px-4 py-3">ERP lot</th><th className="px-4 py-3">Employees</th><th className="px-4 py-3">Big bags</th><th className="px-4 py-3">Weight</th><th className="px-4 py-3">Status</th></tr>
             </thead>
             <tbody>
               {collections.slice(0, 12).map((collection) => (
@@ -1400,12 +1475,13 @@ function CollectionForm({
                   <td className="px-4 py-3 font-bold">{formatDate(collection.collectionDate)}</td>
                   <td className="px-4 py-3 font-mono font-black">{String(collection.sheetNumber).padStart(2, "0")}</td>
                   <td className="px-4 py-3 font-mono text-xs font-black">{collection.erpLotNumber}</td>
+                  <td className="px-4 py-3">{collection.employees.length}</td>
                   <td className="px-4 py-3">{collection.bigBags.length}</td>
                   <td className="px-4 py-3 font-mono font-black">{formatKg(collection.totalWeightKg)}</td>
                   <td className="px-4 py-3"><span className={`px-2 py-1 text-[9px] font-black uppercase ${collection.isComplete ? "bg-emerald-100 text-emerald-900" : "bg-violet-100 text-violet-900"}`}>{collection.isComplete ? "Complete" : "Partial"}</span></td>
                 </tr>
               ))}
-              {collections.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">No collection recorded yet.</td></tr>}
+              {collections.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">No collection recorded yet.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -1594,7 +1670,7 @@ function HistoryWorkspace({ productionEntries, collections }: { productionEntrie
             <div key={collection.id} className="grid gap-3 border border-[#ded5ca] bg-[#faf8f5] p-4 sm:grid-cols-[110px_80px_1fr_auto] sm:items-center">
               <span className="text-sm font-black">{formatDate(collection.collectionDate)}</span>
               <span className="font-mono text-lg font-black">BS {String(collection.sheetNumber).padStart(2, "0")}</span>
-              <span><span className="block font-mono text-sm font-black">{collection.erpLotNumber}</span><span className="mt-1 block text-xs text-slate-500">{collection.bigBags.map((bag) => `${numberValue(bag.weightKg).toLocaleString("en-US", { maximumFractionDigits: 1 })} kg`).join(" · ")}</span></span>
+              <span><span className="block font-mono text-sm font-black">{collection.erpLotNumber}</span><span className="mt-1 block text-xs text-slate-500">Team: {collection.employees.map((employee) => employee.employeeName).join(", ")}</span><span className="mt-1 block text-xs text-slate-500">{collection.bigBags.map((bag) => `${numberValue(bag.weightKg).toLocaleString("en-US", { maximumFractionDigits: 1 })} kg`).join(" · ")}</span></span>
               <span className="text-right"><span className="block font-mono text-lg font-black text-[#b86c2c]">{formatKg(collection.totalWeightKg)}</span><span className={`mt-1 inline-block px-2 py-1 text-[9px] font-black uppercase ${collection.isComplete ? "bg-emerald-100 text-emerald-900" : "bg-violet-100 text-violet-900"}`}>{collection.isComplete ? "Complete" : "Partial"}</span></span>
             </div>
           ))}
