@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .field-control {
+    @apply min-h-12 w-full border border-[#bdb1a5] bg-white px-3 py-2 text-sm text-[#201a16] outline-none transition placeholder:text-slate-400 focus:border-[#b86c2c] focus:ring-2 focus:ring-[#d78a46]/20;
+  }
+}
+
 :root {
   color-scheme: light;
 }
