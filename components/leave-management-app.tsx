@@ -193,6 +193,7 @@ interface AdminEmployeeRow {
   first_name: string;
   surname: string;
   birth_date: string | null;
+  work_week_days: number | string | null;
   department: string;
   position_title: string;
   primary_role: string;
@@ -1474,7 +1475,6 @@ export function LeaveManagementApp() {
   }
 
   function openEditEmployee(employee: AdminEmployeeRow) {
-    const balanceEmployee = employees.find((item) => item.id === employee.id);
     setNewAccessCode(null);
     setEmployeeEditor({
       id: employee.id,
@@ -1482,7 +1482,7 @@ export function LeaveManagementApp() {
       firstName: employee.first_name,
       surname: employee.surname,
       birthDate: employee.birth_date ?? "",
-      workWeekDays: balanceEmployee?.workWeekDays === 5 ? 5 : 6,
+      workWeekDays: asNumber(employee.work_week_days) === 5 ? 5 : 6,
       department: employee.department === "Unassigned" ? "" : employee.department,
       positionTitle: employee.position_title ?? "",
       primaryRole: employee.primary_role ?? "",
@@ -3449,7 +3449,9 @@ function EmployeeManagementPanel({
                     {balance ? balanceWithEntitlement(balance.familyBalance, balance.familyEntitlement, localizedCopy[language].days) : "—"}
                   </td>
                   <td className="px-4 py-3 font-mono text-sm font-black text-slate-700">
-                    {balance?.workWeekDays ? `${balance.workWeekDays} ${u.daysPerWeek}` : "—"}
+                    {asNumber(employee.work_week_days) === 5
+                      ? `5 ${u.daysPerWeek}`
+                      : `6 ${u.daysPerWeek}`}
                   </td>
                   <td className="px-4 py-3"><div className="flex max-w-[330px] flex-wrap gap-1">{(employee.skill_codes ?? []).map((skill) => <span key={skill} className="bg-slate-100 px-2 py-1 font-mono text-[10px] font-black text-slate-700">{skill.replaceAll("_"," ")}</span>)}</div></td>
                   <td className="px-4 py-3"><span className={`inline-flex px-2 py-1 text-xs font-black ${employee.has_account ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-600"}`}>{employee.has_account ? u.portalReady : u.noAccount}</span></td>
