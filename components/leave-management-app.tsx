@@ -215,6 +215,7 @@ interface EmployeeEditorState {
   firstName: string;
   surname: string;
   birthDate: string;
+  workWeekDays: 5 | 6;
   department: string;
   positionTitle: string;
   primaryRole: string;
@@ -511,6 +512,9 @@ const uiCopyEn = {
   firstName: "First name",
   surname: "Surname",
   dateOfBirth: "Date of birth",
+  workingSchedule: "Working schedule",
+  fiveDayWorker: "5-day worker · Monday to Friday",
+  sixDayWorker: "6-day worker · Monday to Saturday",
   positionTitle: "Position title",
   primaryRole: "Primary role",
   portalRole: "Portal role",
@@ -675,6 +679,9 @@ const uiCopy = {
     firstName: "Voornaam",
     surname: "Van",
     dateOfBirth: "Geboortedatum",
+    workingSchedule: "Werkskedule",
+    fiveDayWorker: "5-dag werknemer · Maandag tot Vrydag",
+    sixDayWorker: "6-dag werknemer · Maandag tot Saterdag",
     positionTitle: "Postitel",
     primaryRole: "Primêre rol",
     portalRole: "Portaalrol",
@@ -1455,6 +1462,7 @@ export function LeaveManagementApp() {
       firstName: "",
       surname: "",
       birthDate: "",
+      workWeekDays: 6,
       department: "",
       positionTitle: "",
       primaryRole: "",
@@ -1466,6 +1474,7 @@ export function LeaveManagementApp() {
   }
 
   function openEditEmployee(employee: AdminEmployeeRow) {
+    const balanceEmployee = employees.find((item) => item.id === employee.id);
     setNewAccessCode(null);
     setEmployeeEditor({
       id: employee.id,
@@ -1473,6 +1482,7 @@ export function LeaveManagementApp() {
       firstName: employee.first_name,
       surname: employee.surname,
       birthDate: employee.birth_date ?? "",
+      workWeekDays: balanceEmployee?.workWeekDays === 5 ? 5 : 6,
       department: employee.department === "Unassigned" ? "" : employee.department,
       positionTitle: employee.position_title ?? "",
       primaryRole: employee.primary_role ?? "",
@@ -1489,13 +1499,14 @@ export function LeaveManagementApp() {
     setMessage(null);
     setNewAccessCode(null);
     try {
-      const { data, error } = await supabase.rpc("portal_save_employee", {
+      const { data, error } = await supabase.rpc("portal_save_employee_with_schedule", {
         p_token: sessionToken,
         p_employee_uuid: employeeEditor.id,
         p_employee_code: employeeEditor.employeeCode,
         p_first_name: employeeEditor.firstName,
         p_surname: employeeEditor.surname,
         p_birth_date: employeeEditor.birthDate || null,
+        p_work_week_days: employeeEditor.workWeekDays,
         p_department: employeeEditor.department || "Unassigned",
         p_position_title: employeeEditor.positionTitle,
         p_primary_role: employeeEditor.primaryRole,
@@ -3477,6 +3488,21 @@ function EmployeeManagementPanel({
                     Initial password: DDMMYY, generated automatically.
                   </span>
                 )}
+              </EditorField>
+              <EditorField label={u.workingSchedule}>
+                <select
+                  value={editor.workWeekDays}
+                  onChange={(e) =>
+                    onChange({
+                      ...editor,
+                      workWeekDays: Number(e.target.value) === 5 ? 5 : 6,
+                    })
+                  }
+                  className={inputClass}
+                >
+                  <option value={6}>{u.sixDayWorker}</option>
+                  <option value={5}>{u.fiveDayWorker}</option>
+                </select>
               </EditorField>
               <EditorField label={localizedCopy[language].department}><input list="employee-departments" value={editor.department} onChange={(e) => onChange({ ...editor, department: e.target.value })} placeholder="Production" className={inputClass}/><datalist id="employee-departments">{options.departments.map((d) => <option key={d} value={d}/>)}</datalist></EditorField>
               <EditorField label={u.positionTitle}><input value={editor.positionTitle} onChange={(e) => onChange({ ...editor, positionTitle: e.target.value })} placeholder="Machine Operator" className={inputClass}/></EditorField>
