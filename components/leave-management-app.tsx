@@ -56,6 +56,7 @@ type PortalRole = "employee" | "supervisor" | "manager";
 type ManpowerStatus = "GREEN" | "ORANGE" | "RED" | "NOT_ASSESSED";
 type LeaveType = "ANNUAL" | "COMPASSIONATE" | "UNPAID" | "MIXED";
 type ShortfallAction = "SPLIT" | "ALL_UNPAID";
+type LeaveDayPart = "FULL_DAY" | "MORNING" | "AFTERNOON";
 type PortalEmployee = Employee & {
   annualEntitlement: number;
   sickEntitlement: number;
@@ -140,6 +141,7 @@ interface LeaveRow {
   annual_end_date?: string | null;
   unpaid_start_date?: string | null;
   shortfall_action?: string | null;
+  day_part?: LeaveDayPart | null;
   manpower_status?: ManpowerStatus | null;
   manpower_details?: any;
   assessed_at?: string | null;
@@ -152,6 +154,7 @@ type LeaveWithManpower = LeaveRequest & {
   annualEndDate: string | null;
   unpaidStartDate: string | null;
   shortfallAction: ShortfallAction | null;
+  dayPart: LeaveDayPart;
   manpowerStatus: ManpowerStatus;
   manpowerDetails: any;
   assessedAt: string | null;
@@ -544,6 +547,12 @@ const uiCopyEn = {
   unpaidLeave: "Unpaid Leave",
   leaveType: "Leave type",
   requestLeaveGeneral: "Request leave",
+  leaveDuration: "Leave duration",
+  fullDay: "Full day",
+  halfDayMorning: "Half day · Morning",
+  halfDayAfternoon: "Half day · Afternoon",
+  morningShort: "Morning",
+  afternoonShort: "Afternoon",
   noBalanceDeduction: "No balance deduction",
   balanceImpact: "Balance impact",
   unpaidLeaveDays: "Unpaid leave days",
@@ -711,6 +720,12 @@ const uiCopy = {
     unpaidLeave: "Onbetaalde verlof",
     leaveType: "Verloftipe",
     requestLeaveGeneral: "Versoek verlof",
+    leaveDuration: "Verlofduur",
+    fullDay: "Volle dag",
+    halfDayMorning: "Halwe dag · Oggend",
+    halfDayAfternoon: "Halwe dag · Namiddag",
+    morningShort: "Oggend",
+    afternoonShort: "Namiddag",
     noBalanceDeduction: "Geen saldo-aftrekking",
     balanceImpact: "Saldo-impak",
     unpaidLeaveDays: "Onbetaalde verlofdae",
@@ -903,6 +918,7 @@ function mapLeave(row: LeaveRow): LeaveWithManpower {
     annualEndDate: row.annual_end_date ?? null,
     unpaidStartDate: row.unpaid_start_date ?? null,
     shortfallAction: (row.shortfall_action as ShortfallAction | null) ?? null,
+    dayPart: row.day_part ?? "FULL_DAY",
     manpowerStatus: row.manpower_status ?? "NOT_ASSESSED",
     manpowerDetails: row.manpower_details ?? null,
     assessedAt: row.assessed_at ?? null,
@@ -941,6 +957,20 @@ function statusLabel(status: RequestStatus, language: AppLanguage): string {
     rejected: t.rejected,
     cancelled: t.cancelled,
   }[status];
+}
+
+function leaveDayPartLabel(dayPart: LeaveDayPart, language: AppLanguage): string {
+  const u = uiCopy[language];
+  if (dayPart === "MORNING") return u.morningShort;
+  if (dayPart === "AFTERNOON") return u.afternoonShort;
+  return u.fullDay;
+}
+
+function leavePeriodLabel(request: LeaveWithManpower, language: AppLanguage): string {
+  if (request.dayPart === "FULL_DAY") {
+    return `${formatDate(request.startDate)} → ${formatDate(request.endDate)}`;
+  }
+  return `${formatDate(request.startDate)} · ${leaveDayPartLabel(request.dayPart, language)}`;
 }
 
 function isTodayWithin(request: LeaveRequest): boolean {
@@ -1045,6 +1075,7 @@ export function LeaveManagementApp() {
   const [endDate, setEndDate] = useState("");
   const [comment, setComment] = useState("");
   const [leaveType, setLeaveType] = useState<LeaveType>("ANNUAL");
+  const [leaveDayPart, setLeaveDayPart] = useState<LeaveDayPart>("FULL_DAY");
   const [shortfallAction, setShortfallAction] = useState<ShortfallAction>("SPLIT");
   const [overtimeDate, setOvertimeDate] = useState(isoDate(new Date()));
   const [overtimeStart, setOvertimeStart] = useState("");
@@ -1223,8 +1254,8 @@ export function LeaveManagementApp() {
   );
 
   const requestedDays = useMemo(
-    () =>
-      Math.max(
+    () => {
+      const fullDays = Math.max(
         0,
         calculateLeaveDaysWithHolidays(
           startDate,
@@ -1232,10 +1263,15 @@ export function LeaveManagementApp() {
           publicHolidays,
           currentEmployee?.workWeekDays ?? 6,
         ),
-      ),
+      );
+
+      if (leaveDayPart === "FULL_DAY") return fullDays;
+      return startDate && startDate === endDate && fullDays === 1 ? 0.5 : 0;
+    },
     [
       currentEmployee?.workWeekDays,
       endDate,
+      leaveDayPart,
       publicHolidays,
       startDate,
     ],
@@ -1308,6 +1344,7 @@ export function LeaveManagementApp() {
     setEndDate("");
     setComment("");
     setLeaveType("ANNUAL");
+    setLeaveDayPart("FULL_DAY");
     setShortfallAction("SPLIT");
   }
 
@@ -1320,6 +1357,7 @@ export function LeaveManagementApp() {
     setLeaveType(
       request.leaveType === "MIXED" ? "ANNUAL" : request.leaveType,
     );
+    setLeaveDayPart(request.dayPart);
     setShortfallAction(request.shortfallAction ?? "SPLIT");
     setMessage(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1360,8 +1398,8 @@ export function LeaveManagementApp() {
     setMessage(null);
     try {
       const functionName = editingLeaveId
-        ? "portal_update_leave_request"
-        : "portal_submit_leave";
+        ? "portal_update_leave_request_with_day_part"
+        : "portal_submit_leave_with_day_part";
 
       const { error } = await supabase.rpc(functionName, {
         p_token: sessionToken,
@@ -1371,6 +1409,7 @@ export function LeaveManagementApp() {
         p_comment: comment.trim() || null,
         p_leave_type: leaveType,
         p_shortfall_action: shortfallAction,
+        p_day_part: leaveDayPart,
       });
 
       if (error) throw error;
@@ -1836,9 +1875,11 @@ export function LeaveManagementApp() {
               endDate={endDate}
               comment={comment}
               leaveType={leaveType}
+              leaveDayPart={leaveDayPart}
               shortfallAction={shortfallAction}
               setShortfallAction={setShortfallAction}
               setLeaveType={setLeaveType}
+              setLeaveDayPart={setLeaveDayPart}
               setStartDate={setStartDate}
               setEndDate={setEndDate}
               setComment={setComment}
@@ -2480,9 +2521,11 @@ interface EmployeeViewProps {
   endDate: string;
   comment: string;
   leaveType: LeaveType;
+  leaveDayPart: LeaveDayPart;
   shortfallAction: ShortfallAction;
   setShortfallAction: (value: ShortfallAction) => void;
   setLeaveType: (value: LeaveType) => void;
+  setLeaveDayPart: (value: LeaveDayPart) => void;
   setStartDate: (value: string) => void;
   setEndDate: (value: string) => void;
   setComment: (value: string) => void;
@@ -2524,9 +2567,11 @@ function EmployeeView(props: EmployeeViewProps) {
     endDate,
     comment,
     leaveType,
+    leaveDayPart,
     shortfallAction,
     setShortfallAction,
     setLeaveType,
+    setLeaveDayPart,
     setStartDate,
     setEndDate,
     setComment,
@@ -2662,9 +2707,55 @@ function EmployeeView(props: EmployeeViewProps) {
                   <option value="UNPAID">{u.unpaidLeave}</option>
                 </select>
               </Field>
+              <Field label={u.leaveDuration}>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {([
+                    { value: "FULL_DAY", label: u.fullDay },
+                    { value: "MORNING", label: u.halfDayMorning },
+                    { value: "AFTERNOON", label: u.halfDayAfternoon },
+                  ] as Array<{ value: LeaveDayPart; label: string }>).map((option) => (
+                    <label
+                      key={option.value}
+                      className={`cursor-pointer rounded-2xl border px-4 py-3 text-sm font-black transition ${
+                        leaveDayPart === option.value
+                          ? "border-[#b87333] bg-[#fff4e5] text-[#6f3f1d] ring-2 ring-[#d99a55]/25"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-[#d99a55]"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="leave-day-part"
+                        value={option.value}
+                        checked={leaveDayPart === option.value}
+                        onChange={() => {
+                          setLeaveDayPart(option.value);
+                          if (option.value !== "FULL_DAY" && startDate) {
+                            setEndDate(startDate);
+                          }
+                        }}
+                        className="mr-2 accent-[#b87333]"
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+              </Field>
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label={t.startDate}><input required type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className={inputClass} /></Field>
-                <Field label={t.endDate}><input required type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className={inputClass} /></Field>
+                <Field label={leaveDayPart === "FULL_DAY" ? t.startDate : "Date"}>
+                  <input
+                    required
+                    type="date"
+                    value={startDate}
+                    onChange={(event) => {
+                      setStartDate(event.target.value);
+                      if (leaveDayPart !== "FULL_DAY") setEndDate(event.target.value);
+                    }}
+                    className={inputClass}
+                  />
+                </Field>
+                {leaveDayPart === "FULL_DAY" && (
+                  <Field label={t.endDate}><input required type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className={inputClass} /></Field>
+                )}
               </div>
               <Field label={t.comment}><textarea rows={4} value={comment} onChange={(event) => setComment(event.target.value)} placeholder={t.commentPlaceholder} className={`${inputClass} resize-none`} /></Field>
               <div className="grid gap-3 rounded-3xl border border-[#ecd3b5] bg-[#fff8ef] p-4 sm:grid-cols-2">
@@ -2769,7 +2860,7 @@ function EmployeeView(props: EmployeeViewProps) {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-black text-slate-950">
-                      {formatDate(request.startDate)} → {formatDate(request.endDate)}
+                      {leavePeriodLabel(request, language)}
                     </p>
                     <p className="mt-1 text-sm text-slate-500">
                       {request.leaveType === "MIXED"
@@ -2942,6 +3033,12 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
 
     const leave = leaveOnDate(employee.id, date);
     if (!leave) return { kind: "working" as const, code: "W" };
+    const dayPartSuffix =
+      leave.dayPart === "MORNING"
+        ? " AM"
+        : leave.dayPart === "AFTERNOON"
+          ? " PM"
+          : "";
 
     if (leave.status === "approved") {
       if (leave.leaveType === "MIXED") {
@@ -2949,8 +3046,9 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
           Boolean(leave.annualEndDate) && date <= (leave.annualEndDate as string);
         return {
           kind: "approved_leave" as const,
-          code: isAnnualPart ? "AL" : "UL",
+          code: `${isAnnualPart ? "AL" : "UL"}${dayPartSuffix}`,
           leaveType: isAnnualPart ? "ANNUAL" as const : "UNPAID" as const,
+          dayPart: leave.dayPart,
         };
       }
 
@@ -2961,12 +3059,13 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
       };
       return {
         kind: "approved_leave" as const,
-        code: code[leave.leaveType],
+        code: `${code[leave.leaveType]}${dayPartSuffix}`,
         leaveType: leave.leaveType,
+        dayPart: leave.dayPart,
       };
     }
-    if (leave.status === "pending_supervisor") return { kind: "pending_supervisor" as const, code: "PS" };
-    if (leave.status === "pending_manager") return { kind: "pending_manager" as const, code: "PM" };
+    if (leave.status === "pending_supervisor") return { kind: "pending_supervisor" as const, code: `PS${dayPartSuffix}`, dayPart: leave.dayPart };
+    if (leave.status === "pending_manager") return { kind: "pending_manager" as const, code: `PM${dayPartSuffix}`, dayPart: leave.dayPart };
     return { kind: "working" as const, code: "W" };
   }
 
@@ -3116,7 +3215,13 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
                             }`}
                           >
                             <span
-                              title={state.kind === "absence" ? state.classification.replace("_", " ") : undefined}
+                              title={
+                                state.kind === "absence"
+                                  ? state.classification.replace("_", " ")
+                                  : "dayPart" in state && state.dayPart
+                                    ? leaveDayPartLabel(state.dayPart, language)
+                                    : undefined
+                              }
                               className={`grid w-full place-items-center border font-mono font-black tracking-[0.04em] ${
                                 scale === "month" ? "h-6 text-[8px]" : "h-8 text-[10px]"
                               } ${calendarCellClass(state)}`}
@@ -3816,7 +3921,7 @@ function RequestTable({ title, employees, requests, language, t, savingRequestId
                     <p className="mt-3 text-sm font-semibold text-slate-600">
                       {employee.department} · {request.leaveType === "MIXED"
                           ? `${request.annualDays} AL + ${request.unpaidDays} UL`
-                          : request.leaveType.replace("_", " ")} · {formatDate(request.startDate)} → {formatDate(request.endDate)} · {request.days} days
+                          : request.leaveType.replace("_", " ")} · {leavePeriodLabel(request, language)} · {request.days} days
                     </p>
                     <div className="mt-3"><StatusBadge status={request.status} language={language}/></div>
                   </div>
