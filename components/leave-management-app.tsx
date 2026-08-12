@@ -1093,6 +1093,15 @@ export function LeaveManagementApp() {
       setLoading(true);
       setDatabaseError(null);
       try {
+        // A personal account may exist while its employee UUID is missing or
+        // stale (typically after creating/importing a new employee). Repairing
+        // the exact GCN login-to-employee link before loading prevents a blank
+        // employee workspace. Older databases can ignore the missing RPC until
+        // SQL 52 is installed.
+        await supabase.rpc("portal_repair_employee_self_link", {
+          p_token: token,
+        });
+
         const [employeeResult, leaveResult, overtimeResult, factoryResult, absenceResult, holidayResult, adminEmployeeResult, adminOptionsResult] = await Promise.all([
           supabase.rpc("portal_employees_v2", { p_token: token }),
           supabase.rpc("portal_leave_requests", { p_token: token }),
@@ -1806,7 +1815,7 @@ export function LeaveManagementApp() {
           </nav>
           <div className="mt-4 hidden rounded-2xl border border-[#332820] bg-[#201914] p-4 lg:block">
             <p className="text-xs font-semibold text-slate-400">{u.accessScope}</p>
-            <p className="mt-1 text-sm font-black text-white">{profile.department}</p>
+            <p className="mt-1 text-sm font-black text-white">{currentEmployee?.department ?? profile.department}</p>
             <p className="mt-3 text-xs leading-5 text-slate-500">{a.autoLogout}</p>
           </div>
         </aside>
@@ -1859,6 +1868,16 @@ export function LeaveManagementApp() {
               employeeRequests={employeeRequests}
               employeeOvertime={employeeOvertime}
             />
+          )}
+
+          {view === "employee" && !loading && !currentEmployee && (
+            <section className="rounded-3xl border border-red-300 bg-red-50 p-6 shadow-xl shadow-red-950/5">
+              <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-red-700">Employee profile unavailable</p>
+              <h2 className="mt-2 text-2xl font-black text-slate-950">Your portal account is not linked to an active employee record.</h2>
+              <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-slate-600">
+                Refresh this page after Management has repaired the employee account link. Your password and existing leave records are unaffected.
+              </p>
+            </section>
           )}
 
           {view === "employees" && profile.role === "manager" && (
