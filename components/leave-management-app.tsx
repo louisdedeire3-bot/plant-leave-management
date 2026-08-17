@@ -142,6 +142,7 @@ interface LeaveRow {
   unpaid_start_date?: string | null;
   shortfall_action?: string | null;
   day_part?: LeaveDayPart | null;
+  rejection_reason?: string | null;
   manpower_status?: ManpowerStatus | null;
   manpower_details?: any;
   assessed_at?: string | null;
@@ -155,6 +156,7 @@ type LeaveWithManpower = LeaveRequest & {
   unpaidStartDate: string | null;
   shortfallAction: ShortfallAction | null;
   dayPart: LeaveDayPart;
+  rejectionReason: string;
   manpowerStatus: ManpowerStatus;
   manpowerDetails: any;
   assessedAt: string | null;
@@ -166,7 +168,7 @@ interface FactoryModeRow {
   updated_at: string;
 }
 
-type AbsenceClassification = "UNJUSTIFIED" | "SICK" | "ANNUAL" | "COMPASSIONATE" | "UNPAID";
+type AbsenceClassification = "UNJUSTIFIED" | "CAME_LATE" | "SICK" | "ANNUAL" | "COMPASSIONATE" | "UNPAID";
 
 interface AbsenceRow {
   id: string;
@@ -541,12 +543,14 @@ const uiCopyEn = {
   classification: "Classification",
   managerAction: "Manager action",
   unjustified: "Unjustified",
+  cameLateToWork: "Came late to work",
   sickLeave: "Sick Leave",
   annualLeave: "Annual Leave",
   compassionateLeave: "Compassionate Leave",
   unpaidLeave: "Unpaid Leave",
   leaveType: "Leave type",
   requestLeaveGeneral: "Request leave",
+  rejectionReasonShown: "Reason for rejection",
   leaveDuration: "Leave duration",
   fullDay: "Full day",
   halfDayMorning: "Half day · Morning",
@@ -714,12 +718,14 @@ const uiCopy = {
     classification: "Klassifikasie",
     managerAction: "Bestuursaksie",
     unjustified: "Ongeregverdig",
+    cameLateToWork: "Laat by die werk aangekom",
     sickLeave: "Siekteverlof",
     annualLeave: "Jaarlikse verlof",
     compassionateLeave: "Deernisverlof",
     unpaidLeave: "Onbetaalde verlof",
     leaveType: "Verloftipe",
     requestLeaveGeneral: "Versoek verlof",
+    rejectionReasonShown: "Rede vir afkeuring",
     leaveDuration: "Verlofduur",
     fullDay: "Volle dag",
     halfDayMorning: "Halwe dag · Oggend",
@@ -919,6 +925,7 @@ function mapLeave(row: LeaveRow): LeaveWithManpower {
     unpaidStartDate: row.unpaid_start_date ?? null,
     shortfallAction: (row.shortfall_action as ShortfallAction | null) ?? null,
     dayPart: row.day_part ?? "FULL_DAY",
+    rejectionReason: row.rejection_reason?.trim() ?? "",
     manpowerStatus: row.manpower_status ?? "NOT_ASSESSED",
     manpowerDetails: row.manpower_details ?? null,
     assessedAt: row.assessed_at ?? null,
@@ -1718,7 +1725,9 @@ export function LeaveManagementApp() {
 
       setMessage({
         kind: "success",
-        text: `Absence changed to ${classification.replaceAll("_", " ")} and moved to the planning.`,
+        text: classification === "CAME_LATE"
+          ? "Attendance changed to Came late to work and moved to the planning."
+          : `Absence changed to ${classification.replaceAll("_", " ")} and moved to the planning.`,
       });
 
       // No immediate full reload here: a stale API response could otherwise
@@ -2868,6 +2877,16 @@ function EmployeeView(props: EmployeeViewProps) {
                         : `${request.leaveType.replace("_", " ")} · ${request.days} ${t.days}`}
                       {request.comment ? ` · ${request.comment}` : ""}
                     </p>
+                    {request.status === "rejected" && request.rejectionReason && (
+                      <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-900">
+                        <p className="font-mono text-[10px] font-black uppercase tracking-[0.14em] text-red-700">
+                          {u.rejectionReasonShown}
+                        </p>
+                        <p className="mt-1 text-sm font-semibold leading-6">
+                          {request.rejectionReason}
+                        </p>
+                      </div>
+                    )}
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-2">
                     <StatusBadge status={request.status} language={language} />
@@ -3021,8 +3040,13 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
   function calendarState(employee: Employee, date: string) {
     const absence = absenceOnDate(employee, date);
     if (absence) {
+      if (absence.classification === "CAME_LATE") {
+        return { kind: "late" as const, code: "LT", classification: absence.classification };
+      }
+
       const code: Record<AbsenceClassification, string> = {
         UNJUSTIFIED: "UA",
+        CAME_LATE: "LT",
         SICK: "SL",
         ANNUAL: "AL",
         COMPASSIONATE: "CL",
@@ -3115,6 +3139,7 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
     }
     return {
       working: "border-emerald-300 bg-emerald-100 text-emerald-900",
+      late: "border-orange-400 bg-orange-500 text-white",
       pending_supervisor: "border-amber-400 bg-amber-300 text-amber-950",
       pending_manager: "border-violet-400 bg-violet-600 text-white",
     }[state.kind];
@@ -3159,6 +3184,7 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
           <LegendBox className="border-violet-500 bg-violet-600" label={`SL — ${u.sickLeave}`} />
           <LegendBox className="border-amber-500 bg-amber-400" label={`CL — ${u.compassionateLeave}`} />
           <LegendBox className="border-red-500 bg-red-600" label={`UA — ${u.unjustified}`} />
+          <LegendBox className="border-orange-400 bg-orange-500" label={`LT — ${u.cameLateToWork}`} />
           <LegendBox className="border-amber-400 bg-amber-300" label="PS — Pending supervisor" />
           <LegendBox className="border-violet-400 bg-violet-600" label="PM — Pending manager" />
           <LegendBox className="border-amber-600 bg-amber-700" label={`PH — ${u.publicHoliday}`} />
@@ -3170,7 +3196,10 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
                 <th style={{ minWidth: employeeColumnWidth, width: employeeColumnWidth }} className="sticky left-0 z-40 border-r border-slate-600 bg-slate-900 px-3 py-2 text-left font-mono text-[10px] font-black uppercase tracking-[0.1em]">{u.employeeDepartment}</th>
                 {rangeDates.map((date) => {
                   const dateKey = isoDate(date);
-                  const away = visibleEmployees.filter((employee) => calendarState(employee, dateKey).kind !== "working").length;
+                  const away = visibleEmployees.filter((employee) => {
+                    const state = calendarState(employee, dateKey);
+                    return state.kind !== "working" && state.kind !== "late";
+                  }).length;
                   const holiday = publicHolidayOnDate(dateKey);
                   const saturday = date.getDay() === 6;
                   const sunday = date.getDay() === 0;
@@ -3216,7 +3245,7 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
                           >
                             <span
                               title={
-                                state.kind === "absence"
+                                state.kind === "absence" || state.kind === "late"
                                   ? state.classification.replace("_", " ")
                                   : "dayPart" in state && state.dayPart
                                     ? leaveDayPartLabel(state.dayPart, language)
@@ -3693,7 +3722,7 @@ function AttendanceBoard({
 }) {
   const u = uiCopy[language];
   const today = isoDate(new Date());
-  const todayAbsences = absences.filter((item) => item.absence_date === today);
+  const todayAbsences = absences.filter((item) => item.absence_date === today && item.classification !== "CAME_LATE");
   const unresolvedAbsences = absences.filter((item) => {
     const classification = String(item.classification ?? "")
       .trim()
@@ -3750,6 +3779,7 @@ function AttendanceBoard({
 
   const classificationStyle: Record<AbsenceClassification, string> = {
     UNJUSTIFIED: "bg-red-100 text-red-800 ring-red-200",
+    CAME_LATE: "bg-orange-100 text-orange-800 ring-orange-200",
     SICK: "bg-violet-100 text-violet-800 ring-violet-200",
     ANNUAL: "bg-blue-100 text-blue-800 ring-blue-200",
     COMPASSIONATE: "bg-amber-100 text-amber-900 ring-amber-200",
@@ -3861,8 +3891,8 @@ function AttendanceBoard({
                   <td className="px-5 py-4"><p className="font-black text-slate-950">{absence.employee_name}</p><p className="font-mono text-xs text-slate-500">{absence.employee_code}</p></td>
                   <td className="px-5 py-4 font-semibold text-slate-600">{absence.department}</td>
                   <td className="px-5 py-4 font-semibold">{formatDate(absence.absence_date)}</td>
-                  <td className="px-5 py-4"><span className={`inline-flex px-3 py-1.5 text-xs font-black ring-1 ${classificationStyle[absence.classification]}`}>{absence.classification.replace("_"," ")}</span></td>
-                  {isManager && <td className="px-5 py-4"><select disabled={busyId === absence.id} value={absence.classification} onChange={(e) => onReclassify(absence.id, e.target.value as AbsenceClassification)} className="border border-slate-300 bg-white px-3 py-2 text-sm font-black"><option value="UNJUSTIFIED">{u.unjustified}</option><option value="SICK">{u.sickLeave}</option><option value="ANNUAL">{u.annualLeave}</option><option value="COMPASSIONATE">{u.compassionateLeave}</option><option value="UNPAID">{u.unpaidLeave}</option></select></td>}
+                  <td className="px-5 py-4"><span className={`inline-flex px-3 py-1.5 text-xs font-black ring-1 ${classificationStyle[absence.classification]}`}>{absence.classification === "CAME_LATE" ? u.cameLateToWork : absence.classification.replace("_"," ")}</span></td>
+                  {isManager && <td className="px-5 py-4"><select disabled={busyId === absence.id} value={absence.classification} onChange={(e) => onReclassify(absence.id, e.target.value as AbsenceClassification)} className="border border-slate-300 bg-white px-3 py-2 text-sm font-black"><option value="UNJUSTIFIED">{u.unjustified}</option><option value="CAME_LATE">{u.cameLateToWork}</option><option value="SICK">{u.sickLeave}</option><option value="ANNUAL">{u.annualLeave}</option><option value="COMPASSIONATE">{u.compassionateLeave}</option><option value="UNPAID">{u.unpaidLeave}</option></select></td>}
                 </tr>
               ))
             )}
