@@ -1704,12 +1704,18 @@ export function LeaveManagementApp() {
     );
 
     try {
-      const { data, error } = await supabase.rpc("portal_reclassify_absence", {
-        p_token: sessionToken,
-        p_absence_id: absenceId,
-        p_classification: classification,
-        p_manager_comment: "",
-      });
+      const { data, error } = classification === "CAME_LATE"
+        ? await supabase.rpc("portal_mark_came_late", {
+            p_token: sessionToken,
+            p_absence_id: absenceId,
+            p_manager_comment: "Employee came late to work",
+          })
+        : await supabase.rpc("portal_reclassify_absence", {
+            p_token: sessionToken,
+            p_absence_id: absenceId,
+            p_classification: classification,
+            p_manager_comment: "",
+          });
 
       if (error) throw error;
 
