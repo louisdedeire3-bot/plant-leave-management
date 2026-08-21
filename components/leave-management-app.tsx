@@ -3,6 +3,7 @@
 import {
   CalendarDays,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -4008,8 +4009,8 @@ function AttendanceBoard({
   const selectedEmployee = employees.find((employee) => employee.id === selectedEmployeeId) ?? null;
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [employeePickerOpen, setEmployeePickerOpen] = useState(false);
-  const [correctionEmployeeId, setCorrectionEmployeeId] = useState("");
-  const [correctionAbsenceId, setCorrectionAbsenceId] = useState("");
+  const [attendanceOpen, setAttendanceOpen] = useState(true);
+  const [absenceCorrectionSearch, setAbsenceCorrectionSearch] = useState("");
 
   useEffect(() => {
     if (selectedEmployee) {
@@ -4035,37 +4036,6 @@ function AttendanceBoard({
       )
       .slice(0, 20);
   }, [employeeSearch, employees, selectedEmployee]);
-
-  const correctionEmployeeOptions = useMemo(() => {
-    const byEmployee = new Map<string, AbsenceRow>();
-    absences.forEach((absence) => {
-      if (!byEmployee.has(absence.employee_id)) byEmployee.set(absence.employee_id, absence);
-    });
-    return Array.from(byEmployee.values()).sort((left, right) =>
-      `${left.employee_name} ${left.employee_code}`.localeCompare(`${right.employee_name} ${right.employee_code}`)
-    );
-  }, [absences]);
-
-  const correctionAbsences = useMemo(
-    () => absences
-      .filter((absence) => absence.employee_id === correctionEmployeeId)
-      .sort((left, right) => right.absence_date.localeCompare(left.absence_date)),
-    [absences, correctionEmployeeId],
-  );
-  const selectedCorrectionAbsence = correctionAbsences.find((absence) => absence.id === correctionAbsenceId) ?? null;
-
-  useEffect(() => {
-    if (correctionEmployeeId && !correctionEmployeeOptions.some((absence) => absence.employee_id === correctionEmployeeId)) {
-      setCorrectionEmployeeId("");
-      setCorrectionAbsenceId("");
-    }
-  }, [correctionEmployeeId, correctionEmployeeOptions]);
-
-  useEffect(() => {
-    if (correctionAbsenceId && !correctionAbsences.some((absence) => absence.id === correctionAbsenceId)) {
-      setCorrectionAbsenceId("");
-    }
-  }, [correctionAbsenceId, correctionAbsences]);
 
   function selectAbsenceEmployee(employee: Employee) {
     onEmployeeChange(employee.id);
@@ -4099,6 +4069,26 @@ function AttendanceBoard({
     }[classification];
   }
 
+  const normalizedAbsenceCorrectionSearch = absenceCorrectionSearch.trim().toLowerCase();
+  const managerVisibleAbsences = absences
+    .filter((absence) => {
+      if (!normalizedAbsenceCorrectionSearch) return true;
+      return [
+        absence.employee_code,
+        absence.employee_name,
+        absence.department,
+        absence.absence_date,
+        classificationLabel(absence.classification),
+        absence.classification,
+        absence.manager_comment,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedAbsenceCorrectionSearch);
+    })
+    .sort((left, right) => right.absence_date.localeCompare(left.absence_date))
+    .slice(0, 100);
+
   return (
     <section className="border border-slate-300 bg-white shadow-xl">
       <div className="border-b border-slate-300 bg-slate-950 p-5 text-white">
@@ -4112,14 +4102,27 @@ function AttendanceBoard({
                 : "Open absences only · resolved cases stay in the planning"}
             </p>
           </div>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="border border-slate-700 bg-slate-900 px-4 py-2"><p className="text-xl font-black">{employees.length}</p><p className="text-[10px] font-black uppercase text-slate-400">{u.team}</p></div>
-            <div className="border border-slate-700 bg-slate-900 px-4 py-2"><p className="text-xl font-black text-amber-400">{todayLeave.length}</p><p className="text-[10px] font-black uppercase text-slate-400">{u.onLeave}</p></div>
-            <div className="border border-slate-700 bg-slate-900 px-4 py-2"><p className="text-xl font-black text-red-400">{todayAbsences.length}</p><p className="text-[10px] font-black uppercase text-slate-400">{u.absent}</p></div>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="border border-slate-700 bg-slate-900 px-4 py-2"><p className="text-xl font-black">{employees.length}</p><p className="text-[10px] font-black uppercase text-slate-400">{u.team}</p></div>
+              <div className="border border-slate-700 bg-slate-900 px-4 py-2"><p className="text-xl font-black text-amber-400">{todayLeave.length}</p><p className="text-[10px] font-black uppercase text-slate-400">{u.onLeave}</p></div>
+              <div className="border border-slate-700 bg-slate-900 px-4 py-2"><p className="text-xl font-black text-red-400">{todayAbsences.length}</p><p className="text-[10px] font-black uppercase text-slate-400">{u.absent}</p></div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAttendanceOpen((open) => !open)}
+              className="inline-flex h-11 items-center gap-2 border border-slate-600 bg-slate-900 px-4 text-xs font-black uppercase tracking-[0.08em] text-white hover:border-amber-400 hover:text-amber-400"
+              aria-expanded={attendanceOpen}
+            >
+              {attendanceOpen ? "Hide absences" : "Show absences"}
+              <ChevronDown size={16} className={`transition-transform ${attendanceOpen ? "rotate-180" : ""}`} />
+            </button>
           </div>
         </div>
       </div>
 
+      {attendanceOpen && (
+        <>
       <div className="grid gap-4 border-b border-slate-200 bg-slate-50 p-5 lg:grid-cols-[1fr_220px_auto]">
         <label className="relative">
           <span className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-500">{u.employee}</span>
@@ -4188,85 +4191,75 @@ function AttendanceBoard({
       </div>
 
       {isManager ? (
-        <div className="border-t border-slate-200 bg-[#fffaf4] p-5">
-          <div className="mb-4">
-            <p className="font-mono text-xs font-black uppercase tracking-[0.16em] text-[#a96529]">Absence correction</p>
-            <h3 className="mt-1 text-xl font-black uppercase text-slate-950">Change a recorded justification</h3>
-            <p className="mt-1 text-sm font-semibold text-slate-600">Select the employee, the recorded absence and then the correct justification.</p>
+        <div className="border-t border-slate-200 bg-[#fffaf4]">
+          <div className="flex flex-wrap items-end justify-between gap-4 p-5">
+            <div>
+              <p className="font-mono text-xs font-black uppercase tracking-[0.16em] text-[#a96529]">Absence correction</p>
+              <h3 className="mt-1 text-xl font-black uppercase text-slate-950">Change a recorded justification</h3>
+              <p className="mt-1 text-sm font-semibold text-slate-600">All recorded absences remain visible and can be corrected directly below.</p>
+            </div>
+            <label className="relative w-full max-w-md">
+              <span className="sr-only">Search recorded absences</span>
+              <Search size={17} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="search"
+                value={absenceCorrectionSearch}
+                onChange={(event) => setAbsenceCorrectionSearch(event.target.value)}
+                placeholder="Name, GCN code, date or justification..."
+                className={`${inputClass} pl-11`}
+              />
+            </label>
           </div>
 
-          {correctionEmployeeOptions.length === 0 ? (
-            <EmptyState text="No recorded absence found." />
-          ) : (
-            <div className="grid gap-4 lg:grid-cols-3">
-              <Field label="Employee">
-                <select
-                  value={correctionEmployeeId}
-                  onChange={(event) => {
-                    setCorrectionEmployeeId(event.target.value);
-                    setCorrectionAbsenceId("");
-                  }}
-                  className={inputClass}
-                >
-                  <option value="">Select an employee</option>
-                  {correctionEmployeeOptions.map((absence) => (
-                    <option key={absence.employee_id} value={absence.employee_id}>
-                      {absence.employee_code} — {absence.employee_name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field label="Recorded absence">
-                <select
-                  value={correctionAbsenceId}
-                  disabled={!correctionEmployeeId}
-                  onChange={(event) => setCorrectionAbsenceId(event.target.value)}
-                  className={inputClass}
-                >
-                  <option value="">Select an absence</option>
-                  {correctionAbsences.map((absence) => (
-                    <option key={absence.id} value={absence.id}>
-                      {formatDate(absence.absence_date)} — {classificationLabel(absence.classification)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field label="Correct justification">
-                <select
-                  disabled={!selectedCorrectionAbsence || busyId === selectedCorrectionAbsence.id}
-                  value={selectedCorrectionAbsence?.classification ?? ""}
-                  onChange={(event) => {
-                    if (selectedCorrectionAbsence) {
-                      onReclassify(selectedCorrectionAbsence.id, event.target.value as AbsenceClassification);
-                    }
-                  }}
-                  className={inputClass}
-                >
-                  <option value="">Select the justification</option>
-                  <option value="UNJUSTIFIED">{u.unjustified}</option>
-                  <option value="CAME_LATE">{u.cameLateToWork}</option>
-                  <option value="SICK">{u.sickLeave}</option>
-                  <option value="ANNUAL">{u.annualLeave}</option>
-                  <option value="COMPASSIONATE">{u.compassionateLeave}</option>
-                  <option value="UNPAID">{u.unpaidLeave}</option>
-                </select>
-              </Field>
-            </div>
-          )}
-
-          {selectedCorrectionAbsence && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border border-slate-300 bg-white px-4 py-3">
-              <div>
-                <p className="text-sm font-black text-slate-950">{selectedCorrectionAbsence.employee_name} · {formatDate(selectedCorrectionAbsence.absence_date)}</p>
-                <p className="mt-1 text-xs font-semibold text-slate-500">{selectedCorrectionAbsence.department} · {selectedCorrectionAbsence.employee_code}</p>
-              </div>
-              <span className={`inline-flex px-3 py-1.5 text-xs font-black ring-1 ${classificationStyle[selectedCorrectionAbsence.classification]}`}>
-                {classificationLabel(selectedCorrectionAbsence.classification)}
-              </span>
-            </div>
-          )}
+          <div className="overflow-x-auto border-t border-slate-200">
+            <table className="w-full min-w-[980px] border-collapse">
+              <thead>
+                <tr className="bg-slate-200 text-left font-mono text-xs font-black uppercase tracking-[0.12em] text-slate-600">
+                  <th className="px-5 py-3">{u.employee}</th>
+                  <th className="px-5 py-3">{localizedCopy[language].department}</th>
+                  <th className="px-5 py-3">Date</th>
+                  <th className="px-5 py-3">Current justification</th>
+                  <th className="px-5 py-3">Correct justification</th>
+                </tr>
+              </thead>
+              <tbody>
+                {managerVisibleAbsences.length === 0 ? (
+                  <tr><td colSpan={5} className="px-5 py-8 text-center font-bold text-slate-400">No recorded absence found.</td></tr>
+                ) : (
+                  managerVisibleAbsences.map((absence) => (
+                    <tr key={absence.id} className="border-t border-slate-200 bg-white">
+                      <td className="px-5 py-4">
+                        <p className="font-black text-slate-950">{absence.employee_name}</p>
+                        <p className="font-mono text-xs text-slate-500">{absence.employee_code}</p>
+                      </td>
+                      <td className="px-5 py-4 font-semibold text-slate-600">{absence.department}</td>
+                      <td className="px-5 py-4 font-semibold">{formatDate(absence.absence_date)}</td>
+                      <td className="px-5 py-4">
+                        <span className={`inline-flex px-3 py-1.5 text-xs font-black ring-1 ${classificationStyle[absence.classification]}`}>
+                          {classificationLabel(absence.classification)}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <select
+                          value={absence.classification}
+                          disabled={busyId === absence.id}
+                          onChange={(event) => onReclassify(absence.id, event.target.value as AbsenceClassification)}
+                          className={`${inputClass} min-w-[220px]`}
+                        >
+                          <option value="UNJUSTIFIED">{classificationLabel("UNJUSTIFIED")}</option>
+                          <option value="CAME_LATE">{classificationLabel("CAME_LATE")}</option>
+                          <option value="SICK">{classificationLabel("SICK")}</option>
+                          <option value="ANNUAL">{classificationLabel("ANNUAL")}</option>
+                          <option value="COMPASSIONATE">{classificationLabel("COMPASSIONATE")}</option>
+                          <option value="UNPAID">{classificationLabel("UNPAID")}</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -4288,6 +4281,8 @@ function AttendanceBoard({
             </tbody>
           </table>
         </div>
+      )}
+        </>
       )}
     </section>
   );
@@ -4364,37 +4359,35 @@ function ApprovedLeaveManagementPanel({
         <div className="space-y-5 p-5">
           <div className="grid gap-4 lg:grid-cols-2">
             <Field label="Employee">
-              <select
+              <SearchableSelect
                 value={selectedEmployeeId}
-                onChange={(event) => {
-                  setSelectedEmployeeId(event.target.value);
+                onChange={(nextValue) => {
+                  setSelectedEmployeeId(nextValue);
                   setSelectedRequestId("");
                 }}
-                className={inputClass}
-              >
-                <option value="">Select an employee</option>
-                {employeeOptions.map((employee) => (
-                  <option key={employee.id} value={employee.id}>
-                    {employee.employeeCode} — {employeeName(employee)} — {employee.department}
-                  </option>
-                ))}
-              </select>
+                placeholder="Type a GCN code, name or department..."
+                options={employeeOptions.map((employee) => ({
+                  value: employee.id,
+                  label: `${employee.employeeCode} — ${employeeName(employee)} — ${employee.department}`,
+                  searchText: `${employee.employeeCode} ${employeeName(employee)} ${employee.department} ${employee.positionTitle}`,
+                }))}
+                emptyText="No employee found"
+              />
             </Field>
 
             <Field label="Approved leave">
-              <select
+              <SearchableSelect
                 value={selectedRequestId}
                 disabled={!selectedEmployeeId}
-                onChange={(event) => setSelectedRequestId(event.target.value)}
-                className={inputClass}
-              >
-                <option value="">Select a leave</option>
-                {employeeRequests.map((request) => (
-                  <option key={request.id} value={request.id}>
-                    {leavePeriodLabel(request, language)} — {request.days} day{request.days === 1 ? "" : "s"}
-                  </option>
-                ))}
-              </select>
+                onChange={setSelectedRequestId}
+                placeholder="Type a date, leave type or comment..."
+                options={employeeRequests.map((request) => ({
+                  value: request.id,
+                  label: `${leavePeriodLabel(request, language)} — ${request.days} day${request.days === 1 ? "" : "s"}`,
+                  searchText: `${request.startDate} ${request.endDate} ${request.leaveType} ${request.comment}`,
+                }))}
+                emptyText="No approved leave found"
+              />
             </Field>
           </div>
 
@@ -4729,6 +4722,122 @@ function OvertimeTable({ title, employees, requests, language, t, savingRequestI
 }
 
 const inputClass = "w-full rounded-2xl border border-[#ddd4ca] bg-[#faf8f4] px-4 py-3.5 font-semibold text-slate-900 transition focus:border-[#d99a55] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#f4dfc4]";
+
+interface SearchableSelectOption {
+  value: string;
+  label: string;
+  searchText?: string;
+}
+
+function SearchableSelect({
+  value,
+  onChange,
+  options,
+  placeholder,
+  disabled = false,
+  emptyText = "No matching result",
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: SearchableSelectOption[];
+  placeholder: string;
+  disabled?: boolean;
+  emptyText?: string;
+}) {
+  const selectedOption = options.find((option) => option.value === value) ?? null;
+  const [query, setQuery] = useState(selectedOption?.label ?? "");
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) setQuery(selectedOption?.label ?? "");
+  }, [open, selectedOption?.label]);
+
+  useEffect(() => {
+    if (!open) return;
+    function closeOnOutsideClick(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, [open]);
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredOptions = options.filter((option) =>
+    `${option.label} ${option.searchText ?? ""}`.toLowerCase().includes(normalizedQuery)
+  );
+
+  function selectOption(option: SearchableSelectOption) {
+    onChange(option.value);
+    setQuery(option.label);
+    setOpen(false);
+  }
+
+  return (
+    <div ref={rootRef} className="relative">
+      <Search size={17} className="pointer-events-none absolute left-4 top-[26px] z-10 -translate-y-1/2 text-slate-400" />
+      <input
+        type="text"
+        role="combobox"
+        aria-expanded={open}
+        autoComplete="off"
+        disabled={disabled}
+        value={query}
+        placeholder={placeholder}
+        onFocus={() => {
+          setOpen(true);
+          if (selectedOption) setQuery("");
+        }}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          if (value) onChange("");
+          setOpen(true);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setOpen(false);
+          if (event.key === "Enter" && open && filteredOptions.length === 1) {
+            event.preventDefault();
+            selectOption(filteredOptions[0]);
+          }
+        }}
+        className={`${inputClass} pl-11 pr-11 disabled:cursor-not-allowed disabled:opacity-50`}
+      />
+      <button
+        type="button"
+        disabled={disabled}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => {
+          setOpen((current) => !current);
+          if (!open && selectedOption) setQuery("");
+        }}
+        className="absolute right-3 top-[26px] grid h-7 w-7 -translate-y-1/2 place-items-center text-slate-400 hover:text-slate-900 disabled:opacity-40"
+        aria-label="Open searchable list"
+      >
+        <ChevronDown size={17} />
+      </button>
+
+      {open && !disabled && (
+        <div className="absolute z-[90] mt-1 max-h-72 w-full overflow-auto border border-[#d8c9b9] bg-white shadow-2xl">
+          {filteredOptions.length === 0 ? (
+            <div className="px-4 py-5 text-sm font-semibold text-slate-400">{emptyText}</div>
+          ) : (
+            filteredOptions.slice(0, 50).map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => selectOption(option)}
+                className={`block w-full border-b border-slate-100 px-4 py-3 text-left text-sm font-bold last:border-b-0 hover:bg-[#fff7ec] ${option.value === value ? "bg-[#fff0dc] text-[#7c481f]" : "text-slate-900"}`}
+              >
+                {option.label}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function LoadingScreen({ text }: { text: string }) { return <div className="grid min-h-screen place-items-center bg-slate-950"><div className="text-center"><LoaderCircle className="mx-auto animate-spin text-amber-400" size={42} /><p className="mt-4 font-mono font-black uppercase tracking-[0.14em] text-slate-300">{text}</p></div></div>; }
 function InlineError({ text }: { text: string }) { return <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 font-mono text-sm font-bold text-red-700">{text}</div>; }
