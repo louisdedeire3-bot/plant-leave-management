@@ -72,6 +72,10 @@ type PortalEmployee = Employee & {
 type CalendarScale = "day" | "week" | "month";
 type Decision = "approve" | "reject";
 
+function calendarLocale(language: AppLanguage): string {
+  return language === "af" ? "af-NA" : "en-GB";
+}
+
 interface PortalProfile {
   accountId: string;
   loginId: string;
@@ -1111,6 +1115,10 @@ export function LeaveManagementApp() {
   const [reportDepartment, setReportDepartment] = useState("all");
   const [reportData, setReportData] = useState<ManagementReportData | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.lang = calendarLocale(language);
+  }, [language]);
 
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const t = localizedCopy[language];
@@ -3112,10 +3120,116 @@ function EmployeeView(props: EmployeeViewProps) {
   );
 }
 
+function CalendarAnchorPicker({ language, value, onChange }: { language: AppLanguage; value: string; onChange: (value: string) => void }) {
+  const selectedDate = useMemo(() => {
+    const parsed = new Date(`${value}T00:00:00`);
+    return Number.isNaN(parsed.valueOf()) ? new Date() : parsed;
+  }, [value]);
+  const [open, setOpen] = useState(false);
+  const [visibleMonth, setVisibleMonth] = useState(
+    () => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1),
+  );
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const locale = calendarLocale(language);
+
+  useEffect(() => {
+    setVisibleMonth(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
+  }, [selectedDate]);
+
+  useEffect(() => {
+    if (!open) return;
+    function closeOnOutsideClick(event: MouseEvent) {
+      if (!pickerRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, [open]);
+
+  const firstDay = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
+  const leadingBlanks = (firstDay.getDay() + 6) % 7;
+  const daysInMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 0).getDate();
+  const calendarDays = Array.from({ length: 42 }, (_, index) => {
+    const day = index - leadingBlanks + 1;
+    return day < 1 || day > daysInMonth
+      ? null
+      : new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), day);
+  });
+  const weekdayDates = Array.from({ length: 7 }, (_, index) => new Date(2026, 0, 5 + index));
+  const todayKey = isoDate(new Date());
+  const selectedKey = isoDate(selectedDate);
+
+  function moveMonth(offset: number) {
+    setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1));
+  }
+
+  function chooseDate(date: Date) {
+    onChange(isoDate(date));
+    setOpen(false);
+  }
+
+  return (
+    <div ref={pickerRef} className="relative">
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="inline-flex h-9 min-w-[150px] items-center justify-between gap-3 border border-slate-600 bg-slate-900 px-3 text-xs font-bold text-white outline-none hover:bg-slate-800"
+      >
+        <span>{new Intl.DateTimeFormat(locale, { day: "2-digit", month: "short", year: "numeric" }).format(selectedDate)}</span>
+        <CalendarDays size={15} className="text-amber-400" />
+      </button>
+
+      {open && (
+        <div role="dialog" aria-label="Choose a date" className="absolute right-0 top-[calc(100%+0.5rem)] z-[80] w-72 border border-slate-500 bg-white p-3 text-slate-950 shadow-2xl">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <button type="button" onClick={() => moveMonth(-1)} className="grid h-8 w-8 place-items-center border border-slate-300 hover:bg-slate-100" aria-label="Previous month"><ChevronLeft size={16} /></button>
+            <p className="text-sm font-black uppercase tracking-tight">
+              {new Intl.DateTimeFormat(locale, { month: "long", year: "numeric" }).format(visibleMonth)}
+            </p>
+            <button type="button" onClick={() => moveMonth(1)} className="grid h-8 w-8 place-items-center border border-slate-300 hover:bg-slate-100" aria-label="Next month"><ChevronRight size={16} /></button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1">
+            {weekdayDates.map((date) => (
+              <span key={date.toISOString()} className="py-1 text-center font-mono text-[9px] font-black uppercase text-slate-500">
+                {new Intl.DateTimeFormat(locale, { weekday: "short" }).format(date)}
+              </span>
+            ))}
+            {calendarDays.map((date, index) => {
+              if (!date) return <span key={`blank-${index}`} className="h-8" />;
+              const dateKey = isoDate(date);
+              const selected = dateKey === selectedKey;
+              const today = dateKey === todayKey;
+              return (
+                <button
+                  key={dateKey}
+                  type="button"
+                  onClick={() => chooseDate(date)}
+                  className={`h-8 border text-xs font-black ${
+                    selected
+                      ? "border-amber-500 bg-amber-400 text-slate-950"
+                      : today
+                        ? "border-emerald-500 bg-emerald-50 text-emerald-900"
+                        : "border-transparent hover:border-slate-300 hover:bg-slate-100"
+                  }`}
+                >
+                  {date.getDate()}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CalendarView({ t, language, employees, requests, absences, publicHolidays, department, setDepartment, anchor, setAnchor }: { t: (typeof localizedCopy)[AppLanguage]; language: AppLanguage; employees: Employee[]; requests: LeaveWithManpower[]; absences: AbsenceRow[]; publicHolidays: PublicHolidayRow[]; department: string; setDepartment: (value: string) => void; anchor: string; setAnchor: (value: string) => void }) {
   const [scale, setScale] = useState<CalendarScale>("week");
   const a = authCopy[language];
   const u = uiCopy[language];
+  const locale = calendarLocale(language);
   const departments = useMemo(() => Array.from(new Set(employees.map((employee) => employee.department))).sort(), [employees]);
   const anchorDate = new Date(`${anchor}T00:00:00`);
   const rangeDates = useMemo(() => {
@@ -3231,9 +3345,9 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
   }
 
   function title() {
-    if (scale === "day") return new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(rangeDates[0]);
-    if (scale === "week") return `${new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short" }).format(rangeDates[0])} — ${new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(rangeDates[rangeDates.length - 1])}`;
-    return new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric" }).format(anchorDate);
+    if (scale === "day") return new Intl.DateTimeFormat(locale, { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(rangeDates[0]);
+    if (scale === "week") return `${new Intl.DateTimeFormat(locale, { day: "2-digit", month: "short" }).format(rangeDates[0])} — ${new Intl.DateTimeFormat(locale, { day: "2-digit", month: "short", year: "numeric" }).format(rangeDates[rangeDates.length - 1])}`;
+    return new Intl.DateTimeFormat(locale, { month: "long", year: "numeric" }).format(anchorDate);
   }
 
   function calendarCellClass(state: ReturnType<typeof calendarState>) {
@@ -3263,7 +3377,7 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
 
   return (
     <div className="space-y-2">
-      <section className="overflow-hidden border border-[#3a2e27] bg-[#171310] text-white shadow-xl">
+      <section className="relative z-40 border border-[#3a2e27] bg-[#171310] text-white shadow-xl">
         <div className="grid xl:grid-cols-[1fr_auto]">
           <div className="border-b border-slate-700 px-4 py-3 xl:border-b-0 xl:border-r">
             <div className="flex items-center gap-3">
@@ -3279,7 +3393,7 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
               {(["day", "week", "month"] as CalendarScale[]).map((item) => <button key={item} onClick={() => setScale(item)} className={`px-3 py-1.5 font-mono text-[10px] font-black uppercase ${scale === item ? "bg-amber-400 text-slate-950" : "text-slate-300 hover:bg-slate-800"}`}>{a[item]}</button>)}
             </div>
             <button onClick={() => shift(-1)} className="grid h-9 w-9 place-items-center border border-slate-600 bg-slate-900 hover:bg-slate-800"><ChevronLeft size={18} /></button>
-            <input type="date" value={anchor} onChange={(event) => setAnchor(event.target.value)} className="h-9 border border-slate-600 bg-slate-900 px-2 text-xs font-bold text-white outline-none" />
+            <CalendarAnchorPicker language={language} value={anchor} onChange={setAnchor} />
             <button onClick={() => shift(1)} className="grid h-9 w-9 place-items-center border border-slate-600 bg-slate-900 hover:bg-slate-800"><ChevronRight size={18} /></button>
           </div>
         </div>
@@ -3329,10 +3443,10 @@ function CalendarView({ t, language, employees, requests, absences, publicHolida
                       }`}
                     >
                       <p className="font-mono text-[8px] font-black uppercase text-slate-300">
-                        {new Intl.DateTimeFormat("en-GB", { weekday: scale === "month" ? "narrow" : "short" }).format(date)}
+                        {new Intl.DateTimeFormat(locale, { weekday: scale === "month" ? "narrow" : "short" }).format(date)}
                       </p>
                       <p className={`${scale === "month" ? "text-sm" : "text-base"} leading-none font-black`}>
-                        {new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: scale === "month" ? undefined : "short" }).format(date)}
+                        {new Intl.DateTimeFormat(locale, { day: "2-digit", month: scale === "month" ? undefined : "short" }).format(date)}
                       </p>
                       <p className="mt-0.5 font-mono text-[7px] font-black uppercase text-amber-200">
                         {holiday ? "PH" : `${away} ${u.away}`}
