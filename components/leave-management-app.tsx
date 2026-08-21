@@ -23,6 +23,7 @@ import {
   Search,
   ShieldCheck,
   TimerReset,
+  Trash2,
   UserRound,
   UsersRound,
   X,
@@ -229,6 +230,17 @@ interface EmployeeEditorState {
   portalRole: PortalRole;
   supervisorEmployeeId: string;
   skillCodes: string[];
+}
+
+interface ManagerLeaveEditorState {
+  requestId: string;
+  employeeId: string;
+  startDate: string;
+  endDate: string;
+  comment: string;
+  leaveType: Exclude<LeaveType, "MIXED">;
+  dayPart: LeaveDayPart;
+  shortfallAction: ShortfallAction;
 }
 
 interface OvertimeRow {
@@ -1091,6 +1103,7 @@ export function LeaveManagementApp() {
   const [overtimeReason, setOvertimeReason] = useState("");
   const [editingLeaveId, setEditingLeaveId] = useState<string | null>(null);
   const [editingOvertimeId, setEditingOvertimeId] = useState<string | null>(null);
+  const [managerLeaveEditor, setManagerLeaveEditor] = useState<ManagerLeaveEditorState | null>(null);
   const [reportDateFrom, setReportDateFrom] = useState(
     isoDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
   );
@@ -1120,6 +1133,7 @@ export function LeaveManagementApp() {
     setNewAccessCode(null);
     setEditingLeaveId(null);
     setEditingOvertimeId(null);
+    setManagerLeaveEditor(null);
     setMessage(null);
     setDatabaseError(null);
     setView("employee");
@@ -1307,6 +1321,7 @@ export function LeaveManagementApp() {
   const supervisorOvertimePending = overtimeRequests.filter((request) => request.status === "pending_supervisor");
   const managerLeavePending = requests.filter((request) => request.status === "pending_manager");
   const managerOvertimePending = overtimeRequests.filter((request) => request.status === "pending_manager");
+  const managerApprovedLeave = requests.filter((request) => request.status === "approved");
   const onLeaveToday = requests.filter(isTodayWithin);
   const approvedThisMonth = requests.filter((request) => {
     const date = new Date(`${request.startDate}T00:00:00`);
@@ -1755,6 +1770,82 @@ export function LeaveManagementApp() {
     }
   }
 
+  function openManagerLeaveEditor(request: LeaveWithManpower) {
+    setManagerLeaveEditor({
+      requestId: request.id,
+      employeeId: request.employeeId,
+      startDate: request.startDate,
+      endDate: request.endDate,
+      comment: request.comment,
+      leaveType: request.leaveType === "MIXED" ? "ANNUAL" : request.leaveType,
+      dayPart: request.dayPart,
+      shortfallAction: request.shortfallAction ?? "SPLIT",
+    });
+    setMessage(null);
+  }
+
+  async function saveManagerApprovedLeave() {
+    if (!sessionToken || !supabase || !managerLeaveEditor) return;
+    setSavingRequestId(managerLeaveEditor.requestId);
+    setMessage(null);
+    try {
+      const { error } = await supabase.rpc("portal_manager_update_approved_leave", {
+        p_token: sessionToken,
+        p_request_id: managerLeaveEditor.requestId,
+        p_start_date: managerLeaveEditor.startDate,
+        p_end_date: managerLeaveEditor.endDate,
+        p_comment: managerLeaveEditor.comment.trim() || null,
+        p_leave_type: managerLeaveEditor.leaveType,
+        p_shortfall_action: managerLeaveEditor.shortfallAction,
+        p_day_part: managerLeaveEditor.dayPart,
+      });
+      if (error) throw error;
+      setManagerLeaveEditor(null);
+      setMessage({
+        kind: "success",
+        text: "Approved leave updated. The employee balance was recalculated.",
+      });
+      await loadData(sessionToken);
+    } catch (error) {
+      setMessage({ kind: "error", text: errorText(error) });
+    } finally {
+      setSavingRequestId(null);
+    }
+  }
+
+  async function withdrawManagerApprovedLeave(request: LeaveWithManpower) {
+    if (!sessionToken || !supabase) return;
+    const employee = employees.find((item) => item.id === request.employeeId);
+    const reason = window.prompt(
+      `Withdraw the approved leave for ${employee ? employeeName(employee) : "this employee"}?\n\nEnter an optional reason, then click OK to confirm.`,
+      "Employee requested to withdraw the leave",
+    );
+    if (reason === null) return;
+
+    setSavingRequestId(request.id);
+    setMessage(null);
+    try {
+      const { error } = await supabase.rpc("portal_manager_cancel_approved_leave", {
+        p_token: sessionToken,
+        p_request_id: request.id,
+        p_reason: reason.trim() || null,
+      });
+      if (error) throw error;
+      if (managerLeaveEditor?.requestId === request.id) {
+        setManagerLeaveEditor(null);
+      }
+      setMessage({
+        kind: "success",
+        text: "Approved leave withdrawn. The days were returned to the employee balance.",
+      });
+      await loadData(sessionToken);
+    } catch (error) {
+      setMessage({ kind: "error", text: errorText(error) });
+    } finally {
+      setSavingRequestId(null);
+    }
+  }
+
   async function decide(kind: "leave" | "overtime", requestId: string, decision: Decision) {
     if (!sessionToken || !supabase) return;
     let comment = "";
@@ -2047,6 +2138,14 @@ export function LeaveManagementApp() {
               onReassess={(id) => void reassessLeave(id)}
               showManpower={true}
             />
+              <ApprovedLeaveManagementPanel
+                employees={employees}
+                requests={managerApprovedLeave}
+                language={language}
+                savingRequestId={savingRequestId}
+                onEdit={openManagerLeaveEditor}
+                onWithdraw={(request) => void withdrawManagerApprovedLeave(request)}
+              />
               <section className="border border-[#3a2e27] bg-[#171310] p-5 text-white shadow-xl shadow-black/10">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div><p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">{u.factoryMode}</p><h2 className="mt-1 text-2xl font-black">{factoryMode?.low_season_mode !== false ? u.lowSeason : u.highSeason}</h2><p className="mt-1 text-sm text-slate-400">{factoryMode?.low_season_mode !== false ? u.lowSeasonDetail : u.highSeasonDetail}</p></div>
@@ -2077,6 +2176,17 @@ export function LeaveManagementApp() {
           )}
         </main>
       </div>
+      {managerLeaveEditor && (
+        <ManagerApprovedLeaveEditModal
+          editor={managerLeaveEditor}
+          employee={employees.find((item) => item.id === managerLeaveEditor.employeeId) ?? null}
+          publicHolidays={publicHolidays}
+          saving={savingRequestId === managerLeaveEditor.requestId}
+          onChange={setManagerLeaveEditor}
+          onClose={() => setManagerLeaveEditor(null)}
+          onSave={() => void saveManagerApprovedLeave()}
+        />
+      )}
     </div>
   );
 }
@@ -3906,6 +4016,327 @@ function AttendanceBoard({
         </table>
       </div>
     </section>
+  );
+}
+
+function ApprovedLeaveManagementPanel({
+  employees,
+  requests,
+  language,
+  savingRequestId,
+  onEdit,
+  onWithdraw,
+}: {
+  employees: PortalEmployee[];
+  requests: LeaveWithManpower[];
+  language: AppLanguage;
+  savingRequestId: string | null;
+  onEdit: (request: LeaveWithManpower) => void;
+  onWithdraw: (request: LeaveWithManpower) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const today = isoDate(new Date());
+  const normalizedSearch = search.trim().toLowerCase();
+
+  const visibleRequests = requests
+    .filter((request) => {
+      if (!normalizedSearch) return true;
+      const employee = employees.find((item) => item.id === request.employeeId);
+      const haystack = [
+        employee?.employeeCode,
+        employee ? employeeName(employee) : "",
+        employee?.department,
+        request.startDate,
+        request.endDate,
+        request.comment,
+      ].join(" ").toLowerCase();
+      return haystack.includes(normalizedSearch);
+    })
+    .sort((left, right) => {
+      const leftPast = left.endDate < today;
+      const rightPast = right.endDate < today;
+      if (leftPast !== rightPast) return leftPast ? 1 : -1;
+      return leftPast
+        ? right.startDate.localeCompare(left.startDate)
+        : left.startDate.localeCompare(right.startDate);
+    })
+    .slice(0, 100);
+
+  return (
+    <section className="overflow-hidden border border-[#3a2e27] bg-white shadow-xl">
+      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-300 bg-[#f6efe7] p-5">
+        <div>
+          <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-[#a96529]">
+            Manager corrections
+          </p>
+          <h2 className="mt-1 text-2xl font-black uppercase text-slate-950">
+            Approved leave
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm font-semibold text-slate-600">
+            Change an approved request or withdraw it when the employee no longer wants the leave. Withdrawn requests stay in the history and their days return to the balance.
+          </p>
+        </div>
+        <label className="w-full max-w-sm">
+          <span className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+            Search employee or date
+          </span>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="GCN code, name, department, date..."
+              className={`${inputClass} pl-10`}
+            />
+          </div>
+        </label>
+      </div>
+
+      {visibleRequests.length === 0 ? (
+        <div className="p-8"><EmptyState text="No approved leave found." /></div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1080px] border-collapse">
+            <thead>
+              <tr className="bg-slate-900 text-left font-mono text-xs font-black uppercase tracking-[0.12em] text-slate-300">
+                <th className="px-5 py-4">Employee</th>
+                <th className="px-5 py-4">Period</th>
+                <th className="px-5 py-4">Type</th>
+                <th className="px-5 py-4">Days</th>
+                <th className="px-5 py-4">Comment</th>
+                <th className="px-5 py-4 text-right">Manager action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRequests.map((request) => {
+                const employee = employees.find((item) => item.id === request.employeeId);
+                if (!employee) return null;
+                const busy = savingRequestId === request.id;
+                return (
+                  <tr key={request.id} className="border-t border-slate-200 align-top hover:bg-slate-50">
+                    <td className="px-5 py-4"><EmployeeCell employee={employee} /></td>
+                    <td className="px-5 py-4">
+                      <p className="font-black text-slate-900">{leavePeriodLabel(request, language)}</p>
+                      <div className="mt-2"><StatusBadge status={request.status} language={language} /></div>
+                    </td>
+                    <td className="px-5 py-4 font-bold text-slate-700">
+                      {request.leaveType === "MIXED"
+                        ? `${request.annualDays} AL + ${request.unpaidDays} UL`
+                        : request.leaveType.replaceAll("_", " ")}
+                    </td>
+                    <td className="px-5 py-4 font-black text-slate-950">{request.days}</td>
+                    <td className="max-w-[280px] px-5 py-4 text-sm font-semibold text-slate-600">
+                      {request.comment || "—"}
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => onEdit(request)}
+                          className="inline-flex h-10 items-center gap-2 border border-[#b87333] bg-[#fff4e5] px-3 text-xs font-black uppercase text-[#7c481f] hover:bg-[#fde7cc] disabled:opacity-50"
+                        >
+                          <Pencil size={15} /> Edit
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => onWithdraw(request)}
+                          className="inline-flex h-10 items-center gap-2 border border-red-600 bg-white px-3 text-xs font-black uppercase text-red-700 hover:bg-red-50 disabled:opacity-50"
+                        >
+                          {busy ? <LoaderCircle className="animate-spin" size={15} /> : <Trash2 size={15} />}
+                          Withdraw
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ManagerApprovedLeaveEditModal({
+  editor,
+  employee,
+  publicHolidays,
+  saving,
+  onChange,
+  onClose,
+  onSave,
+}: {
+  editor: ManagerLeaveEditorState;
+  employee: PortalEmployee | null;
+  publicHolidays: PublicHolidayRow[];
+  saving: boolean;
+  onChange: (value: ManagerLeaveEditorState | null) => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  const fullDays = calculateLeaveDaysWithHolidays(
+    editor.startDate,
+    editor.endDate,
+    publicHolidays,
+    employee?.workWeekDays ?? 6,
+  );
+  const requestedDays = editor.dayPart === "FULL_DAY"
+    ? fullDays
+    : editor.startDate && editor.startDate === editor.endDate && fullDays === 1
+      ? 0.5
+      : 0;
+  const selectedHolidays = publicHolidays.filter(
+    (holiday) => holiday.holiday_date >= editor.startDate && holiday.holiday_date <= editor.endDate,
+  );
+
+  function update(patch: Partial<ManagerLeaveEditorState>) {
+    onChange({ ...editor, ...patch });
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-950/70 p-4 backdrop-blur-sm sm:p-8">
+      <div className="mx-auto max-w-3xl border border-[#4a382a] bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 bg-[#171310] p-5 text-white sm:p-7">
+          <div>
+            <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">
+              Manager correction
+            </p>
+            <h2 className="mt-2 text-2xl font-black uppercase">Edit approved leave</h2>
+            {employee && (
+              <p className="mt-2 text-sm font-semibold text-slate-300">
+                {employeeName(employee)} · {employee.employeeCode} · {employee.department}
+              </p>
+            )}
+          </div>
+          <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center border border-slate-600 text-slate-300 hover:bg-slate-800 hover:text-white">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="space-y-5 p-5 sm:p-7">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Leave type">
+              <select
+                value={editor.leaveType}
+                onChange={(event) => update({ leaveType: event.target.value as Exclude<LeaveType, "MIXED"> })}
+                className={inputClass}
+              >
+                <option value="ANNUAL">Annual Leave</option>
+                <option value="COMPASSIONATE">Compassionate Leave</option>
+                <option value="UNPAID">Unpaid Leave</option>
+              </select>
+            </Field>
+            <Field label="Leave duration">
+              <select
+                value={editor.dayPart}
+                onChange={(event) => {
+                  const dayPart = event.target.value as LeaveDayPart;
+                  update({
+                    dayPart,
+                    ...(dayPart === "FULL_DAY" ? {} : { endDate: editor.startDate }),
+                  });
+                }}
+                className={inputClass}
+              >
+                <option value="FULL_DAY">Full day</option>
+                <option value="MORNING">Half day · Morning</option>
+                <option value="AFTERNOON">Half day · Afternoon</option>
+              </select>
+            </Field>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={editor.dayPart === "FULL_DAY" ? "Start date" : "Date"}>
+              <input
+                type="date"
+                value={editor.startDate}
+                onChange={(event) => update({
+                  startDate: event.target.value,
+                  ...(editor.dayPart === "FULL_DAY" ? {} : { endDate: event.target.value }),
+                })}
+                className={inputClass}
+              />
+            </Field>
+            {editor.dayPart === "FULL_DAY" ? (
+              <Field label="End date">
+                <input
+                  type="date"
+                  value={editor.endDate}
+                  onChange={(event) => update({ endDate: event.target.value })}
+                  className={inputClass}
+                />
+              </Field>
+            ) : (
+              <div className="rounded-2xl border border-[#ecd3b5] bg-[#fff8ef] p-4">
+                <p className="text-sm font-bold text-slate-500">Selected half day</p>
+                <p className="mt-2 text-lg font-black text-slate-950">
+                  {editor.dayPart === "MORNING" ? "Morning" : "Afternoon"}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {editor.leaveType === "ANNUAL" && (
+            <Field label="If the Annual Leave balance is insufficient">
+              <select
+                value={editor.shortfallAction}
+                onChange={(event) => update({ shortfallAction: event.target.value as ShortfallAction })}
+                className={inputClass}
+              >
+                <option value="SPLIT">Use Annual balance, then Unpaid Leave</option>
+                <option value="ALL_UNPAID">Make the entire request Unpaid Leave</option>
+              </select>
+            </Field>
+          )}
+
+          <Field label="Comment">
+            <textarea
+              rows={3}
+              value={editor.comment}
+              onChange={(event) => update({ comment: event.target.value })}
+              className={`${inputClass} resize-none`}
+            />
+          </Field>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <CalculationTile label="Recalculated leave days" value={`${requestedDays} days`} danger={requestedDays <= 0} />
+            <CalculationTile
+              label="Employee work week"
+              value={employee?.workWeekDays ? `${employee.workWeekDays} days per week` : "6 days per week"}
+            />
+          </div>
+
+          {selectedHolidays.length > 0 && (
+            <div className="border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-950">
+              <p className="font-black">Public holidays excluded from the leave calculation:</p>
+              {selectedHolidays.map((holiday) => (
+                <p key={holiday.holiday_date} className="mt-1">
+                  {formatDate(holiday.holiday_date)} — {holiday.holiday_name}
+                </p>
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-wrap justify-end gap-3 border-t border-slate-200 pt-5">
+            <button type="button" onClick={onClose} className="h-11 border border-slate-300 bg-white px-5 text-sm font-black uppercase text-slate-700 hover:bg-slate-50">
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={saving || requestedDays <= 0 || !editor.startDate || !editor.endDate}
+              onClick={onSave}
+              className="inline-flex h-11 items-center gap-2 bg-[#d99a55] px-5 text-sm font-black uppercase text-[#171310] hover:bg-[#c88843] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {saving ? <LoaderCircle className="animate-spin" size={17} /> : <Check size={17} />}
+              Save approved leave
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
