@@ -76,6 +76,22 @@ function calendarLocale(language: AppLanguage): string {
   return language === "af" ? "af-NA" : "en-GB";
 }
 
+function addOneCalendarMonth(value: string): Date {
+  const source = new Date(`${value}T00:00:00`);
+  const targetMonth = new Date(source.getFullYear(), source.getMonth() + 1, 1);
+  const lastDay = new Date(targetMonth.getFullYear(), targetMonth.getMonth() + 1, 0).getDate();
+  targetMonth.setDate(Math.min(source.getDate(), lastDay));
+  return targetMonth;
+}
+
+function approvedLeaveModificationDeadline(endDate: string): string {
+  return isoDate(addOneCalendarMonth(endDate));
+}
+
+function approvedLeaveCanBeModified(endDate: string, today = isoDate(new Date())): boolean {
+  return today <= approvedLeaveModificationDeadline(endDate);
+}
+
 interface PortalProfile {
   accountId: string;
   loginId: string;
@@ -1779,6 +1795,13 @@ export function LeaveManagementApp() {
   }
 
   function openManagerLeaveEditor(request: LeaveWithManpower) {
+    if (!approvedLeaveCanBeModified(request.endDate)) {
+      setMessage({
+        kind: "error",
+        text: "This approved leave can no longer be changed because its one-month correction period has ended.",
+      });
+      return;
+    }
     setManagerLeaveEditor({
       requestId: request.id,
       employeeId: request.employeeId,
@@ -1794,6 +1817,15 @@ export function LeaveManagementApp() {
 
   async function saveManagerApprovedLeave() {
     if (!sessionToken || !supabase || !managerLeaveEditor) return;
+    const originalRequest = requests.find((request) => request.id === managerLeaveEditor.requestId);
+    if (originalRequest && !approvedLeaveCanBeModified(originalRequest.endDate)) {
+      setManagerLeaveEditor(null);
+      setMessage({
+        kind: "error",
+        text: "This approved leave can no longer be changed because its one-month correction period has ended.",
+      });
+      return;
+    }
     setSavingRequestId(managerLeaveEditor.requestId);
     setMessage(null);
     try {
@@ -1823,6 +1855,13 @@ export function LeaveManagementApp() {
 
   async function withdrawManagerApprovedLeave(request: LeaveWithManpower) {
     if (!sessionToken || !supabase) return;
+    if (!approvedLeaveCanBeModified(request.endDate)) {
+      setMessage({
+        kind: "error",
+        text: "This approved leave can no longer be withdrawn because its one-month correction period has ended.",
+      });
+      return;
+    }
     const employee = employees.find((item) => item.id === request.employeeId);
     const reason = window.prompt(
       `Withdraw the approved leave for ${employee ? employeeName(employee) : "this employee"}?\n\nEnter an optional reason, then click OK to confirm.`,
@@ -3969,6 +4008,8 @@ function AttendanceBoard({
   const selectedEmployee = employees.find((employee) => employee.id === selectedEmployeeId) ?? null;
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [employeePickerOpen, setEmployeePickerOpen] = useState(false);
+  const [correctionEmployeeId, setCorrectionEmployeeId] = useState("");
+  const [correctionAbsenceId, setCorrectionAbsenceId] = useState("");
 
   useEffect(() => {
     if (selectedEmployee) {
@@ -3995,6 +4036,37 @@ function AttendanceBoard({
       .slice(0, 20);
   }, [employeeSearch, employees, selectedEmployee]);
 
+  const correctionEmployeeOptions = useMemo(() => {
+    const byEmployee = new Map<string, AbsenceRow>();
+    absences.forEach((absence) => {
+      if (!byEmployee.has(absence.employee_id)) byEmployee.set(absence.employee_id, absence);
+    });
+    return Array.from(byEmployee.values()).sort((left, right) =>
+      `${left.employee_name} ${left.employee_code}`.localeCompare(`${right.employee_name} ${right.employee_code}`)
+    );
+  }, [absences]);
+
+  const correctionAbsences = useMemo(
+    () => absences
+      .filter((absence) => absence.employee_id === correctionEmployeeId)
+      .sort((left, right) => right.absence_date.localeCompare(left.absence_date)),
+    [absences, correctionEmployeeId],
+  );
+  const selectedCorrectionAbsence = correctionAbsences.find((absence) => absence.id === correctionAbsenceId) ?? null;
+
+  useEffect(() => {
+    if (correctionEmployeeId && !correctionEmployeeOptions.some((absence) => absence.employee_id === correctionEmployeeId)) {
+      setCorrectionEmployeeId("");
+      setCorrectionAbsenceId("");
+    }
+  }, [correctionEmployeeId, correctionEmployeeOptions]);
+
+  useEffect(() => {
+    if (correctionAbsenceId && !correctionAbsences.some((absence) => absence.id === correctionAbsenceId)) {
+      setCorrectionAbsenceId("");
+    }
+  }, [correctionAbsenceId, correctionAbsences]);
+
   function selectAbsenceEmployee(employee: Employee) {
     onEmployeeChange(employee.id);
     setEmployeeSearch(`${employee.employeeCode} — ${employeeName(employee)} — ${employee.department}`);
@@ -4016,6 +4088,17 @@ function AttendanceBoard({
     UNPAID: "bg-slate-200 text-slate-900 ring-slate-300",
   };
 
+  function classificationLabel(classification: AbsenceClassification): string {
+    return {
+      UNJUSTIFIED: u.unjustified,
+      CAME_LATE: u.cameLateToWork,
+      SICK: u.sickLeave,
+      ANNUAL: u.annualLeave,
+      COMPASSIONATE: u.compassionateLeave,
+      UNPAID: u.unpaidLeave,
+    }[classification];
+  }
+
   return (
     <section className="border border-slate-300 bg-white shadow-xl">
       <div className="border-b border-slate-300 bg-slate-950 p-5 text-white">
@@ -4024,7 +4107,9 @@ function AttendanceBoard({
             <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-amber-400">{u.attendanceControl}</p>
             <h2 className="mt-1 text-2xl font-black uppercase">{title}</h2>
             <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
-              Open absences only · resolved cases stay in the planning
+              {isManager
+                ? "Record absences and correct any saved justification"
+                : "Open absences only · resolved cases stay in the planning"}
             </p>
           </div>
           <div className="grid grid-cols-3 gap-2 text-center">
@@ -4102,33 +4187,108 @@ function AttendanceBoard({
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] border-collapse">
-          <thead><tr className="bg-slate-200 text-left font-mono text-xs font-black uppercase tracking-[0.12em] text-slate-600"><th className="px-5 py-3">{u.employee}</th><th className="px-5 py-3">{localizedCopy[language].department}</th><th className="px-5 py-3">Date</th><th className="px-5 py-3">{u.classification}</th>{isManager && <th className="px-5 py-3">{u.managerAction}</th>}</tr></thead>
-          <tbody>
-            {unresolvedAbsences.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={isManager ? 5 : 4}
-                  className="px-5 py-8 text-center font-bold text-slate-400"
+      {isManager ? (
+        <div className="border-t border-slate-200 bg-[#fffaf4] p-5">
+          <div className="mb-4">
+            <p className="font-mono text-xs font-black uppercase tracking-[0.16em] text-[#a96529]">Absence correction</p>
+            <h3 className="mt-1 text-xl font-black uppercase text-slate-950">Change a recorded justification</h3>
+            <p className="mt-1 text-sm font-semibold text-slate-600">Select the employee, the recorded absence and then the correct justification.</p>
+          </div>
+
+          {correctionEmployeeOptions.length === 0 ? (
+            <EmptyState text="No recorded absence found." />
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-3">
+              <Field label="Employee">
+                <select
+                  value={correctionEmployeeId}
+                  onChange={(event) => {
+                    setCorrectionEmployeeId(event.target.value);
+                    setCorrectionAbsenceId("");
+                  }}
+                  className={inputClass}
                 >
-                  {u.noAbsencesAwaitingReason}
-                </td>
-              </tr>
-            ) : (
-              unresolvedAbsences.slice(0, 30).map((absence) => (
-                <tr key={absence.id} className="border-t border-slate-200">
-                  <td className="px-5 py-4"><p className="font-black text-slate-950">{absence.employee_name}</p><p className="font-mono text-xs text-slate-500">{absence.employee_code}</p></td>
-                  <td className="px-5 py-4 font-semibold text-slate-600">{absence.department}</td>
-                  <td className="px-5 py-4 font-semibold">{formatDate(absence.absence_date)}</td>
-                  <td className="px-5 py-4"><span className={`inline-flex px-3 py-1.5 text-xs font-black ring-1 ${classificationStyle[absence.classification]}`}>{absence.classification === "CAME_LATE" ? u.cameLateToWork : absence.classification.replace("_"," ")}</span></td>
-                  {isManager && <td className="px-5 py-4"><select disabled={busyId === absence.id} value={absence.classification} onChange={(e) => onReclassify(absence.id, e.target.value as AbsenceClassification)} className="border border-slate-300 bg-white px-3 py-2 text-sm font-black"><option value="UNJUSTIFIED">{u.unjustified}</option><option value="CAME_LATE">{u.cameLateToWork}</option><option value="SICK">{u.sickLeave}</option><option value="ANNUAL">{u.annualLeave}</option><option value="COMPASSIONATE">{u.compassionateLeave}</option><option value="UNPAID">{u.unpaidLeave}</option></select></td>}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+                  <option value="">Select an employee</option>
+                  {correctionEmployeeOptions.map((absence) => (
+                    <option key={absence.employee_id} value={absence.employee_id}>
+                      {absence.employee_code} — {absence.employee_name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Recorded absence">
+                <select
+                  value={correctionAbsenceId}
+                  disabled={!correctionEmployeeId}
+                  onChange={(event) => setCorrectionAbsenceId(event.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">Select an absence</option>
+                  {correctionAbsences.map((absence) => (
+                    <option key={absence.id} value={absence.id}>
+                      {formatDate(absence.absence_date)} — {classificationLabel(absence.classification)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Correct justification">
+                <select
+                  disabled={!selectedCorrectionAbsence || busyId === selectedCorrectionAbsence.id}
+                  value={selectedCorrectionAbsence?.classification ?? ""}
+                  onChange={(event) => {
+                    if (selectedCorrectionAbsence) {
+                      onReclassify(selectedCorrectionAbsence.id, event.target.value as AbsenceClassification);
+                    }
+                  }}
+                  className={inputClass}
+                >
+                  <option value="">Select the justification</option>
+                  <option value="UNJUSTIFIED">{u.unjustified}</option>
+                  <option value="CAME_LATE">{u.cameLateToWork}</option>
+                  <option value="SICK">{u.sickLeave}</option>
+                  <option value="ANNUAL">{u.annualLeave}</option>
+                  <option value="COMPASSIONATE">{u.compassionateLeave}</option>
+                  <option value="UNPAID">{u.unpaidLeave}</option>
+                </select>
+              </Field>
+            </div>
+          )}
+
+          {selectedCorrectionAbsence && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border border-slate-300 bg-white px-4 py-3">
+              <div>
+                <p className="text-sm font-black text-slate-950">{selectedCorrectionAbsence.employee_name} · {formatDate(selectedCorrectionAbsence.absence_date)}</p>
+                <p className="mt-1 text-xs font-semibold text-slate-500">{selectedCorrectionAbsence.department} · {selectedCorrectionAbsence.employee_code}</p>
+              </div>
+              <span className={`inline-flex px-3 py-1.5 text-xs font-black ring-1 ${classificationStyle[selectedCorrectionAbsence.classification]}`}>
+                {classificationLabel(selectedCorrectionAbsence.classification)}
+              </span>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] border-collapse">
+            <thead><tr className="bg-slate-200 text-left font-mono text-xs font-black uppercase tracking-[0.12em] text-slate-600"><th className="px-5 py-3">{u.employee}</th><th className="px-5 py-3">{localizedCopy[language].department}</th><th className="px-5 py-3">Date</th><th className="px-5 py-3">{u.classification}</th></tr></thead>
+            <tbody>
+              {unresolvedAbsences.length === 0 ? (
+                <tr><td colSpan={4} className="px-5 py-8 text-center font-bold text-slate-400">{u.noAbsencesAwaitingReason}</td></tr>
+              ) : (
+                unresolvedAbsences.slice(0, 30).map((absence) => (
+                  <tr key={absence.id} className="border-t border-slate-200">
+                    <td className="px-5 py-4"><p className="font-black text-slate-950">{absence.employee_name}</p><p className="font-mono text-xs text-slate-500">{absence.employee_code}</p></td>
+                    <td className="px-5 py-4 font-semibold text-slate-600">{absence.department}</td>
+                    <td className="px-5 py-4 font-semibold">{formatDate(absence.absence_date)}</td>
+                    <td className="px-5 py-4"><span className={`inline-flex px-3 py-1.5 text-xs font-black ring-1 ${classificationStyle[absence.classification]}`}>{classificationLabel(absence.classification)}</span></td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }
@@ -4148,24 +4308,11 @@ function ApprovedLeaveManagementPanel({
   onEdit: (request: LeaveWithManpower) => void;
   onWithdraw: (request: LeaveWithManpower) => void;
 }) {
-  const [search, setSearch] = useState("");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
+  const [selectedRequestId, setSelectedRequestId] = useState("");
   const today = isoDate(new Date());
-  const normalizedSearch = search.trim().toLowerCase();
-
-  const visibleRequests = requests
-    .filter((request) => {
-      if (!normalizedSearch) return true;
-      const employee = employees.find((item) => item.id === request.employeeId);
-      const haystack = [
-        employee?.employeeCode,
-        employee ? employeeName(employee) : "",
-        employee?.department,
-        request.startDate,
-        request.endDate,
-        request.comment,
-      ].join(" ").toLowerCase();
-      return haystack.includes(normalizedSearch);
-    })
+  const editableRequests = requests
+    .filter((request) => request.status === "approved" && approvedLeaveCanBeModified(request.endDate, today))
     .sort((left, right) => {
       const leftPast = left.endDate < today;
       const rightPast = right.endDate < today;
@@ -4173,12 +4320,31 @@ function ApprovedLeaveManagementPanel({
       return leftPast
         ? right.startDate.localeCompare(left.startDate)
         : left.startDate.localeCompare(right.startDate);
-    })
-    .slice(0, 100);
+    });
+  const editableEmployeeIds = new Set(editableRequests.map((request) => request.employeeId));
+  const employeeOptions = employees
+    .filter((employee) => editableEmployeeIds.has(employee.id))
+    .sort((left, right) => employeeName(left).localeCompare(employeeName(right)));
+  const employeeRequests = editableRequests.filter((request) => request.employeeId === selectedEmployeeId);
+  const selectedRequest = employeeRequests.find((request) => request.id === selectedRequestId) ?? null;
+  const selectedEmployee = employees.find((employee) => employee.id === selectedEmployeeId) ?? null;
+
+  useEffect(() => {
+    if (selectedEmployeeId && !editableEmployeeIds.has(selectedEmployeeId)) {
+      setSelectedEmployeeId("");
+      setSelectedRequestId("");
+    }
+  }, [editableRequests, selectedEmployeeId]);
+
+  useEffect(() => {
+    if (selectedRequestId && !employeeRequests.some((request) => request.id === selectedRequestId)) {
+      setSelectedRequestId("");
+    }
+  }, [employeeRequests, selectedRequestId]);
 
   return (
-    <section className="overflow-hidden border border-[#3a2e27] bg-white shadow-xl">
-      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-300 bg-[#f6efe7] p-5">
+    <section className="border border-[#3a2e27] bg-white shadow-xl">
+      <div className="border-b border-slate-300 bg-[#f6efe7] p-5">
         <div>
           <p className="font-mono text-xs font-black uppercase tracking-[0.18em] text-[#a96529]">
             Manager corrections
@@ -4187,87 +4353,88 @@ function ApprovedLeaveManagementPanel({
             Approved leave
           </h2>
           <p className="mt-2 max-w-3xl text-sm font-semibold text-slate-600">
-            Change an approved request or withdraw it when the employee no longer wants the leave. Withdrawn requests stay in the history and their days return to the balance.
+            Select an employee and an approved leave. A leave stays editable until one month after its end date; after that it disappears from this correction list.
           </p>
         </div>
-        <label className="w-full max-w-sm">
-          <span className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-500">
-            Search employee or date
-          </span>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="GCN code, name, department, date..."
-              className={`${inputClass} pl-10`}
-            />
-          </div>
-        </label>
       </div>
 
-      {visibleRequests.length === 0 ? (
-        <div className="p-8"><EmptyState text="No approved leave found." /></div>
+      {editableRequests.length === 0 ? (
+        <div className="p-8"><EmptyState text="No approved leave is currently within the one-month correction period." /></div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1080px] border-collapse">
-            <thead>
-              <tr className="bg-slate-900 text-left font-mono text-xs font-black uppercase tracking-[0.12em] text-slate-300">
-                <th className="px-5 py-4">Employee</th>
-                <th className="px-5 py-4">Period</th>
-                <th className="px-5 py-4">Type</th>
-                <th className="px-5 py-4">Days</th>
-                <th className="px-5 py-4">Comment</th>
-                <th className="px-5 py-4 text-right">Manager action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleRequests.map((request) => {
-                const employee = employees.find((item) => item.id === request.employeeId);
-                if (!employee) return null;
-                const busy = savingRequestId === request.id;
-                return (
-                  <tr key={request.id} className="border-t border-slate-200 align-top hover:bg-slate-50">
-                    <td className="px-5 py-4"><EmployeeCell employee={employee} /></td>
-                    <td className="px-5 py-4">
-                      <p className="font-black text-slate-900">{leavePeriodLabel(request, language)}</p>
-                      <div className="mt-2"><StatusBadge status={request.status} language={language} /></div>
-                    </td>
-                    <td className="px-5 py-4 font-bold text-slate-700">
-                      {request.leaveType === "MIXED"
-                        ? `${request.annualDays} AL + ${request.unpaidDays} UL`
-                        : request.leaveType.replaceAll("_", " ")}
-                    </td>
-                    <td className="px-5 py-4 font-black text-slate-950">{request.days}</td>
-                    <td className="max-w-[280px] px-5 py-4 text-sm font-semibold text-slate-600">
-                      {request.comment || "—"}
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => onEdit(request)}
-                          className="inline-flex h-10 items-center gap-2 border border-[#b87333] bg-[#fff4e5] px-3 text-xs font-black uppercase text-[#7c481f] hover:bg-[#fde7cc] disabled:opacity-50"
-                        >
-                          <Pencil size={15} /> Edit
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => onWithdraw(request)}
-                          className="inline-flex h-10 items-center gap-2 border border-red-600 bg-white px-3 text-xs font-black uppercase text-red-700 hover:bg-red-50 disabled:opacity-50"
-                        >
-                          {busy ? <LoaderCircle className="animate-spin" size={15} /> : <Trash2 size={15} />}
-                          Withdraw
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="space-y-5 p-5">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Field label="Employee">
+              <select
+                value={selectedEmployeeId}
+                onChange={(event) => {
+                  setSelectedEmployeeId(event.target.value);
+                  setSelectedRequestId("");
+                }}
+                className={inputClass}
+              >
+                <option value="">Select an employee</option>
+                {employeeOptions.map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.employeeCode} — {employeeName(employee)} — {employee.department}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="Approved leave">
+              <select
+                value={selectedRequestId}
+                disabled={!selectedEmployeeId}
+                onChange={(event) => setSelectedRequestId(event.target.value)}
+                className={inputClass}
+              >
+                <option value="">Select a leave</option>
+                {employeeRequests.map((request) => (
+                  <option key={request.id} value={request.id}>
+                    {leavePeriodLabel(request, language)} — {request.days} day{request.days === 1 ? "" : "s"}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          {selectedRequest && selectedEmployee && (
+            <div className="border border-slate-300 bg-slate-50 p-5">
+              <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr_auto] lg:items-center">
+                <div>
+                  <EmployeeCell employee={selectedEmployee} />
+                  <p className="mt-3 text-sm font-black text-slate-900">{leavePeriodLabel(selectedRequest, language)}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">
+                    Correction available until {formatDate(approvedLeaveModificationDeadline(selectedRequest.endDate))}
+                  </p>
+                </div>
+                <div className="text-sm font-semibold text-slate-600">
+                  <p><span className="font-black text-slate-900">Type:</span> {selectedRequest.leaveType === "MIXED" ? `${selectedRequest.annualDays} AL + ${selectedRequest.unpaidDays} UL` : selectedRequest.leaveType.replaceAll("_", " ")}</p>
+                  <p className="mt-1"><span className="font-black text-slate-900">Days:</span> {selectedRequest.days}</p>
+                  <p className="mt-1"><span className="font-black text-slate-900">Comment:</span> {selectedRequest.comment || "—"}</p>
+                </div>
+                <div className="flex flex-wrap gap-2 lg:justify-end">
+                  <button
+                    type="button"
+                    disabled={savingRequestId === selectedRequest.id}
+                    onClick={() => onEdit(selectedRequest)}
+                    className="inline-flex h-10 items-center gap-2 border border-[#b87333] bg-[#fff4e5] px-3 text-xs font-black uppercase text-[#7c481f] hover:bg-[#fde7cc] disabled:opacity-50"
+                  >
+                    <Pencil size={15} /> Edit
+                  </button>
+                  <button
+                    type="button"
+                    disabled={savingRequestId === selectedRequest.id}
+                    onClick={() => onWithdraw(selectedRequest)}
+                    className="inline-flex h-10 items-center gap-2 border border-red-600 bg-white px-3 text-xs font-black uppercase text-red-700 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    {savingRequestId === selectedRequest.id ? <LoaderCircle className="animate-spin" size={15} /> : <Trash2 size={15} />}
+                    Withdraw
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>
